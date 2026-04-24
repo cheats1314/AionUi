@@ -50,18 +50,63 @@ export const shell = {
 // Conversation — REST + WS
 // ---------------------------------------------------------------------------
 
+// Backend emits snake_case conversation fields (e.g. model.use_model, model.provider_id);
+// renderer type `TProviderWithModel` reads camelCase `useModel`. Without this mapper,
+// GeminiSendBox / AionrsSendBox gate the textarea on `current_model?.useModel` and end up
+// disabled for freshly-created gemini/aionrs leaders (see mnemo #293).
+//
+// Team-created gemini conversations come back as
+//   { provider_id: "gemini", model: "gemini", use_model: null }
+// so we also fall back `useModel` to the scalar `model` field when `use_model` is null —
+// that matches the pre-backend-migration TeamSessionService convention where the agent's
+// model name doubles as the useModel identifier for non-configured gemini providers.
+const fromBackendConversation = (raw: unknown): TChatConversation => {
+  if (!raw || typeof raw !== 'object') return raw as TChatConversation;
+  const c = raw as Record<string, unknown>;
+  if (c.model && typeof c.model === 'object') {
+    const m = c.model as Record<string, unknown>;
+    if ('provider_id' in m && !('id' in m)) {
+      m.id = m.provider_id;
+    }
+    const currentUseModel = m.useModel;
+    const snakeUseModel = m.use_model;
+    const scalarModel = typeof m.model === 'string' ? m.model : undefined;
+    if (currentUseModel == null) {
+      if (snakeUseModel != null) {
+        m.useModel = snakeUseModel;
+      } else if (scalarModel) {
+        m.useModel = scalarModel;
+      }
+    }
+  }
+  return c as unknown as TChatConversation;
+};
+const fromBackendConversationOrNull = (raw: unknown): TChatConversation =>
+  raw == null ? (raw as TChatConversation) : fromBackendConversation(raw);
+const fromBackendConversationList = (raw: unknown): TChatConversation[] =>
+  Array.isArray(raw) ? (raw as unknown[]).map(fromBackendConversation) : [];
+
 export const conversation = {
-  create: httpPost<TChatConversation, ICreateConversationParams>('/api/conversations'),
+  create: httpPost<TChatConversation, ICreateConversationParams>(
+    '/api/conversations',
+    undefined,
+    fromBackendConversation
+  ),
   createWithConversation: httpPost<
     TChatConversation,
     { conversation: TChatConversation; sourceConversationId?: string; migrateCron?: boolean }
-  >('/api/conversations/clone'),
-  get: httpGet<TChatConversation, { id: string }>((p) => `/api/conversations/${p.id}`),
+  >('/api/conversations/clone', undefined, fromBackendConversation),
+  get: httpGet<TChatConversation, { id: string }>(
+    (p) => `/api/conversations/${p.id}`,
+    fromBackendConversationOrNull
+  ),
   getAssociateConversation: httpGet<TChatConversation[], { conversation_id: string }>(
-    (p) => `/api/conversations/${p.conversation_id}/associated`
+    (p) => `/api/conversations/${p.conversation_id}/associated`,
+    fromBackendConversationList
   ),
   listByCronJob: httpGet<TChatConversation[], { cron_job_id: string }>(
-    (p) => `/api/cron/jobs/${p.cron_job_id}/conversations`
+    (p) => `/api/cron/jobs/${p.cron_job_id}/conversations`,
+    fromBackendConversationList
   ),
   remove: httpDelete<boolean, { id: string }>((p) => `/api/conversations/${p.id}`),
   update: httpPatch<boolean, { id: string; updates: Partial<TChatConversation>; mergeExtra?: boolean }>(
