@@ -203,8 +203,15 @@ const TeamSiderSection: React.FC<TeamSiderSectionProps> = ({
                           // Keep onOk synchronous: issue the DELETE + navigate, then close.
                           // Revalidating the team list is fire-and-forget so a slow/failed refetch
                           // doesn't block Modal.confirm from closing or the router from navigating.
+                          // onOk must resolve (not reject) so Arco closes the modal — wrap the
+                          // remove in try/catch and treat 404 (team already gone) as success.
                           onOk: async () => {
-                            await ipcBridge.team.remove.invoke({ id: teamIdToDelete });
+                            try {
+                              await ipcBridge.team.remove.invoke({ id: teamIdToDelete });
+                            } catch {
+                              // Team may already be deleted (e.g. stale sidebar row → 404).
+                              // Proceed with UI cleanup instead of leaving the modal open.
+                            }
                             localStorage.removeItem(`team-active-slot-${teamIdToDelete}`);
                             if (window.location.hash.includes(`/team/${teamIdToDelete}`)) {
                               navigate('/');
