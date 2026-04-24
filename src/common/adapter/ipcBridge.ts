@@ -1315,13 +1315,21 @@ type BackendTeamAgent = {
   custom_agent_id?: string;
 };
 
-const toBackendAgent = (a: Omit<import('@process/team/types').TeamAgent, 'slot_id'>): BackendTeamAgent => ({
-  name: a.agent_name,
-  role: a.role === 'leader' ? 'lead' : a.role,
-  backend: a.conversation_type === 'acp' ? 'acp' : a.agent_type,
-  model: a.model || a.agent_type,
-  ...(a.custom_agent_id ? { custom_agent_id: a.custom_agent_id } : {}),
-});
+// Backend `service.rs` uses `input.model` verbatim — no default. Sending "" or a
+// backend-name-only value (e.g. "gemini") ends up persisted as use_model: null
+// and disables the sendbox (mnemo #297). Callers should pass a real model id
+// (via resolveDefaultTeamAgentModel); this final guard falls back to agent_type
+// for the rare case that slips through, and to 'default' when even that is missing.
+const toBackendAgent = (a: Omit<import('@process/team/types').TeamAgent, 'slot_id'>): BackendTeamAgent => {
+  const model = (a.model && a.model.trim().length > 0 ? a.model : a.agent_type) || 'default';
+  return {
+    name: a.agent_name,
+    role: a.role === 'leader' ? 'lead' : a.role,
+    backend: a.conversation_type === 'acp' ? 'acp' : a.agent_type,
+    model,
+    ...(a.custom_agent_id ? { custom_agent_id: a.custom_agent_id } : {}),
+  };
+};
 
 // Reverse of toBackendAgent. Backend responses use { name, backend, role: 'lead' | 'teammate', ... };
 // renderer consumers expect the legacy { agent_name, agent_type, conversation_type, role: 'leader' | 'teammate' } shape.
