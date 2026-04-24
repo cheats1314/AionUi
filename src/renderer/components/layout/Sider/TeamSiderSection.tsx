@@ -214,7 +214,7 @@ const TeamSiderSection: React.FC<TeamSiderSectionProps> = ({
                             }
                             localStorage.removeItem(`team-active-slot-${teamIdToDelete}`);
                             if (window.location.hash.includes(`/team/${teamIdToDelete}`)) {
-                              navigate('/');
+                              window.location.hash = '#/';
                             }
                             Message.success(t('team.sider.deleteSuccess'));
                             void refreshTeams();
