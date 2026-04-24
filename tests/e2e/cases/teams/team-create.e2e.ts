@@ -157,7 +157,9 @@ async function createTeamWithAgent(
 
   // Find the agent option matching the text pattern (options are at page scope, not inside .arco-modal)
   const allOptions = page.locator('[data-testid^="team-create-agent-option-"]');
-  await expect(allOptions.first()).toBeVisible({ timeout: 5000 }).catch(() => {});
+  await expect(allOptions.first())
+    .toBeVisible({ timeout: 5000 })
+    .catch(() => {});
   const optionCount = await allOptions.count().catch(() => 0);
 
   let matchingOption: import('@playwright/test').Locator | null = null;

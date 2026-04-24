@@ -96,10 +96,7 @@ export const conversation = {
     TChatConversation,
     { conversation: TChatConversation; sourceConversationId?: string; migrateCron?: boolean }
   >('/api/conversations/clone', undefined, fromBackendConversation),
-  get: httpGet<TChatConversation, { id: string }>(
-    (p) => `/api/conversations/${p.id}`,
-    fromBackendConversationOrNull
-  ),
+  get: httpGet<TChatConversation, { id: string }>((p) => `/api/conversations/${p.id}`, fromBackendConversationOrNull),
   getAssociateConversation: httpGet<TChatConversation[], { conversation_id: string }>(
     (p) => `/api/conversations/${p.conversation_id}/associated`,
     fromBackendConversationList
@@ -1343,8 +1340,7 @@ const fromBackendAgent = (raw: unknown): import('@process/team/types').TeamAgent
   const agent_name = (r.agent_name as string | undefined) ?? (r.name as string | undefined) ?? '';
   const agent_type = (r.agent_type as string | undefined) ?? (r.backend as string | undefined) ?? '';
   const role = r.role === 'lead' ? 'leader' : ((r.role as string | undefined) ?? 'teammate');
-  const conversation_type =
-    (r.conversation_type as string | undefined) ?? resolveConversationType(agent_type);
+  const conversation_type = (r.conversation_type as string | undefined) ?? resolveConversationType(agent_type);
   return {
     slot_id: (r.slot_id as string | undefined) ?? '',
     conversation_id: (r.conversation_id as string | undefined) ?? '',
