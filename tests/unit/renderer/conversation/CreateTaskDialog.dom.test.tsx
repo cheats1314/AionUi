@@ -20,6 +20,16 @@ vi.mock('react-i18next', () => ({
       if (key === 'cron.page.form.newConversationHint') return 'Start fresh on every run';
       if (key === 'cron.page.form.existingConversationHint') return 'Keep building in one conversation';
       if (key === 'cron.page.form.executionModeEditHint') return 'Execution mode cannot be changed after creation.';
+      if (key === 'cron.page.form.targetConversation') return 'Target conversation';
+      if (key === 'cron.page.form.targetConversationPlaceholder') return 'Select the conversation to continue in';
+      if (key === 'cron.page.form.targetConversationRequired') return 'Please select the conversation to continue in';
+      if (key === 'cron.page.form.currentConversation') return 'Current conversation';
+      if (key === 'cron.page.form.sourceAionUi') return 'AionUi';
+      if (key === 'cron.page.form.sourceWeChat') return 'WeChat';
+      if (key === 'cron.page.form.sourceWeCom') return 'WeCom';
+      if (key === 'cron.page.form.sourceTelegram') return 'Telegram';
+      if (key === 'cron.page.form.sourceLark') return 'Lark';
+      if (key === 'cron.page.form.sourceDingTalk') return 'DingTalk';
       if (key === 'cron.detail.executionModeDescriptionNew') {
         return 'Each run starts a fresh conversation, so previous context does not carry over.';
       }
@@ -64,6 +74,23 @@ vi.mock('@icon-park/react', () => ({
 // Mock ipcBridge
 const mockAddJob = vi.fn();
 const mockUpdateJob = vi.fn();
+const mockListAllConversations = vi.fn().mockResolvedValue([
+  {
+    id: 'conv-1',
+    name: 'Current Conversation',
+    source: 'weixin',
+    channelChatId: 'wx-chat-1',
+    modifyTime: Date.now(),
+    extra: {},
+  },
+  {
+    id: 'conv-2',
+    name: 'Other Conversation',
+    source: 'aionui',
+    modifyTime: Date.now() - 1000,
+    extra: {},
+  },
+]);
 const mockFormSetFieldsValue = vi.hoisted(() => vi.fn());
 const mockFormResetFields = vi.hoisted(() => vi.fn());
 const mockFormValidate = vi.hoisted(() =>
@@ -88,6 +115,9 @@ vi.mock('@/common', () => ({
     cron: {
       addJob: { invoke: (...args: unknown[]) => mockAddJob(...args) },
       updateJob: { invoke: (...args: unknown[]) => mockUpdateJob(...args) },
+    },
+    conversation: {
+      listAll: { invoke: (...args: unknown[]) => mockListAllConversations(...args) },
     },
   },
 }));
@@ -748,6 +778,29 @@ describe('CreateTaskDialog - schedule preset definitions', () => {
     const callArgs = mockAddJob.mock.calls[0][0];
     expect(callArgs.schedule.expr).toBe('');
     expect(callArgs.schedule.description).toContain('Manual');
+  });
+
+  it('submits the selected current conversation for existing mode', async () => {
+    mockAddJob.mockResolvedValue(undefined);
+
+    render(<CreateTaskDialog visible={true} onClose={vi.fn()} conversationId='conv-1' />);
+
+    await waitFor(() => {
+      expect(mockListAllConversations).toHaveBeenCalled();
+    });
+
+    const radios = screen.getAllByRole('radio');
+    fireEvent.click(radios[1]);
+    fireEvent.click(screen.getByTestId('modal-ok'));
+
+    await waitFor(() => {
+      expect(mockAddJob).toHaveBeenCalled();
+    });
+
+    const callArgs = mockAddJob.mock.calls.at(-1)?.[0];
+    expect(callArgs.executionMode).toBe('existing');
+    expect(callArgs.conversationId).toBe('conv-1');
+    expect(callArgs.conversationTitle).toBe('Current Conversation');
   });
 
   // Test schedule preset definitions by verifying edit mode correctly reconstructs them

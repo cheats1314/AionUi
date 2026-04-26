@@ -295,6 +295,34 @@ describe('CronService', () => {
     await expect(service.updateJob('missing', {})).rejects.toThrow('Job not found: missing');
   });
 
+  it('updateJob rebinds cronJobId when switching target conversation', async () => {
+    const existing = makeJob({ id: 'job-1', metadata: { conversationId: 'conv-1', agentType: 'gemini', createdBy: 'user', createdAt: 1000, updatedAt: 1000 } });
+    const updated = makeJob({ id: 'job-1', metadata: { conversationId: 'conv-2', conversationTitle: 'Conversation 2', agentType: 'gemini', createdBy: 'user', createdAt: 1000, updatedAt: 2000 } });
+    vi.mocked(repo.getById).mockReturnValueOnce(existing).mockReturnValueOnce(updated);
+    vi.mocked(repo.listByConversation).mockReturnValue([]);
+    vi.mocked(conversationRepo.getConversation)
+      .mockResolvedValueOnce({ id: 'conv-1', extra: { cronJobId: 'job-1' } } as any)
+      .mockResolvedValueOnce({ id: 'conv-2', name: 'Conversation 2', extra: {} } as any);
+
+    await service.updateJob('job-1', {
+      metadata: {
+        ...existing.metadata,
+        conversationId: 'conv-2',
+        conversationTitle: 'Conversation 2',
+      },
+    });
+
+    expect(repo.listByConversation).toHaveBeenCalledWith('conv-2');
+    expect(conversationRepo.updateConversation).toHaveBeenCalledWith(
+      'conv-1',
+      expect.objectContaining({ extra: {} })
+    );
+    expect(conversationRepo.updateConversation).toHaveBeenCalledWith(
+      'conv-2',
+      expect.objectContaining({ extra: expect.objectContaining({ cronJobId: 'job-1' }) })
+    );
+  });
+
   // --- removeJob ---
 
   it('removeJob stops timer and emits jobRemoved', async () => {

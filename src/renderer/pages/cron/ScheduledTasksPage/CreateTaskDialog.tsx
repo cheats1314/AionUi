@@ -11,6 +11,7 @@ import ModalWrapper from '@renderer/components/base/ModalWrapper';
 import { Down, Robot } from '@icon-park/react';
 import { ipcBridge } from '@/common';
 import type { ICreateCronJobParams, ICronAgentConfig, ICronJob } from '@/common/adapter/ipcBridge';
+import type { TChatConversation } from '@/common/config/storage';
 import { useConversationAgents } from '@renderer/pages/conversation/hooks/useConversationAgents';
 import { getAgentLogo } from '@renderer/utils/model/agentLogo';
 import { CUSTOM_AVATAR_IMAGE_MAP } from '@/renderer/pages/guid/constants';
@@ -41,6 +42,15 @@ interface CreateTaskDialogProps {
 
 type FrequencyType = 'manual' | 'hourly' | 'daily' | 'weekdays' | 'weekly' | 'custom';
 type ExecutionMode = 'new_conversation' | 'existing';
+
+type TargetConversationOption = {
+  id: string;
+  name: string;
+  source?: string;
+  channelChatId?: string;
+  modifyTime: number;
+  isCurrent: boolean;
+};
 
 const WEEKDAYS = [
   { value: 'MON', label: 'monday' },
@@ -113,6 +123,61 @@ function getDescriptionInitialValue(job: ICronJob): string {
   return '';
 }
 
+function getConversationSourceLabel(source: string | undefined, t: (key: string, options?: Record<string, string>) => string) {
+  switch (source) {
+    case 'weixin':
+      return t('cron.page.form.sourceWeChat');
+    case 'wecom':
+      return t('cron.page.form.sourceWeCom');
+    case 'telegram':
+      return t('cron.page.form.sourceTelegram');
+    case 'lark':
+      return t('cron.page.form.sourceLark');
+    case 'dingtalk':
+      return t('cron.page.form.sourceDingTalk');
+    case 'aionui':
+    case undefined:
+      return t('cron.page.form.sourceAionUi');
+    default:
+      return source;
+  }
+}
+
+function toTargetConversationOptions(
+  conversations: TChatConversation[],
+  currentConversationId: string | undefined,
+  t: (key: string, options?: Record<string, string>) => string
+): TargetConversationOption[] {
+  return conversations
+    .filter((conversation) => Boolean(conversation.id && conversation.name))
+    .filter((conversation) => !conversation.extra?.teamId)
+    .map((conversation) => ({
+      id: conversation.id,
+      name: conversation.name,
+      source: conversation.source,
+      channelChatId: conversation.channelChatId,
+      modifyTime: conversation.modifyTime,
+      isCurrent: conversation.id === currentConversationId,
+    }))
+    .sort((a, b) => {
+      if (a.isCurrent !== b.isCurrent) return a.isCurrent ? -1 : 1;
+      const aExternal = a.source && a.source !== 'aionui';
+      const bExternal = b.source && b.source !== 'aionui';
+      if (aExternal !== bExternal) return aExternal ? -1 : 1;
+      return b.modifyTime - a.modifyTime;
+    });
+}
+
+function formatConversationOptionLabel(
+  conversation: TargetConversationOption,
+  t: (key: string, options?: Record<string, string>) => string
+) {
+  const sourceLabel = getConversationSourceLabel(conversation.source, t);
+  const suffixParts = [sourceLabel];
+  if (conversation.isCurrent) suffixParts.push(t('cron.page.form.currentConversation'));
+  return `${conversation.name} · ${suffixParts.join(' · ')}`;
+}
+
 /**
  * Infer the agent selection key from an ICronJob's agentConfig.
  */
@@ -131,7 +196,7 @@ const CreateTaskDialog: React.FC<CreateTaskDialogProps> = ({
   visible,
   onClose,
   editJob,
-  conversationId: _conversationId,
+  conversationId,
   conversationTitle,
   agentType,
 }) => {
@@ -148,6 +213,8 @@ const CreateTaskDialog: React.FC<CreateTaskDialogProps> = ({
   const isEditMode = !!editJob;
   const [executionMode, setExecutionMode] = useState<ExecutionMode>('new_conversation');
   const [advancedOpen, setAdvancedOpen] = useState(false);
+  const [availableConversations, setAvailableConversations] = useState<TargetConversationOption[]>([]);
+  const [selectedConversationId, setSelectedConversationId] = useState<string | undefined>(undefined);
 
   // Advanced settings state
   const [modelId, setModelId] = useState<string | undefined>(undefined);
@@ -188,6 +255,7 @@ const CreateTaskDialog: React.FC<CreateTaskDialogProps> = ({
       setModelId(editJob.metadata.agentConfig?.modelId);
       setConfigOptions(editJob.metadata.agentConfig?.configOptions);
       setWorkspace(editJob.metadata.agentConfig?.workspace);
+      setSelectedConversationId(editJob.metadata.conversationId || conversationId);
     } else {
       form.resetFields();
       setFrequency('manual');
@@ -200,8 +268,9 @@ const CreateTaskDialog: React.FC<CreateTaskDialogProps> = ({
       setConfigOptions(undefined);
       setWorkspace(undefined);
       setSelectedAgent(undefined);
+      setSelectedConversationId(conversationId);
     }
-  }, [visible, editJob, form]);
+  }, [visible, editJob, form, conversationId]);
 
   // Resolve backend from selectedAgent (handles both CLI and preset agents)
   const resolvedBackend = useMemo(() => {
@@ -356,9 +425,34 @@ const CreateTaskDialog: React.FC<CreateTaskDialogProps> = ({
 
   const selectedExecutionModeOption =
     executionModeOptions.find((option) => option.value === executionMode) ?? executionModeOptions[0];
+  const selectedConversation = useMemo(
+    () => availableConversations.find((conversation) => conversation.id === selectedConversationId),
+    [availableConversations, selectedConversationId]
+  );
   const showModelSelector = Boolean(resolvedBackend && (isGeminiMode || acpCachedModelInfo));
   const showConfigSelector = resolvedBackend === 'codex';
   const advancedFieldCount = Number(showModelSelector) + Number(showConfigSelector) + 1;
+
+  useEffect(() => {
+    if (!visible) return;
+
+    ipcBridge.conversation.listAll
+      .invoke()
+      .then((conversations) => {
+        const options = toTargetConversationOptions(conversations, conversationId, t);
+        setAvailableConversations(options);
+        setSelectedConversationId((prev) => {
+          const preferredId = editJob?.metadata.conversationId || conversationId || prev;
+          if (preferredId && options.some((option) => option.id === preferredId)) {
+            return preferredId;
+          }
+          return options[0]?.id;
+        });
+      })
+      .catch(() => {
+        setAvailableConversations([]);
+      });
+  }, [visible, conversationId, editJob?.metadata.conversationId, t]);
 
   const handleFrequencyChange = (value: FrequencyType) => {
     setFrequency(value);
@@ -441,10 +535,16 @@ const CreateTaskDialog: React.FC<CreateTaskDialogProps> = ({
   const handleSubmit = async () => {
     try {
       const values = await form.validate();
+      if (executionMode === 'existing' && !selectedConversationId) {
+        Message.error(t('cron.page.form.targetConversationRequired'));
+        return;
+      }
       setSubmitting(true);
 
       const scheduleExpr = scheduleInfo.expr;
       const scheduleDesc = scheduleInfo.description;
+      const targetConversationTitle =
+        executionMode === 'existing' ? selectedConversation?.name || conversationTitle : conversationTitle;
 
       const { agentConfig, resolvedAgentType } = resolveAgentConfig(values.agent);
 
@@ -463,6 +563,8 @@ const CreateTaskDialog: React.FC<CreateTaskDialogProps> = ({
             },
             metadata: {
               ...editJob!.metadata,
+              conversationId: executionMode === 'existing' ? selectedConversationId || '' : '',
+              conversationTitle: executionMode === 'existing' ? targetConversationTitle : undefined,
               agentType: resolvedAgentType,
               agentConfig,
               updatedAt: Date.now(),
@@ -477,8 +579,8 @@ const CreateTaskDialog: React.FC<CreateTaskDialogProps> = ({
           description: values.description,
           schedule: { kind: 'cron', expr: scheduleExpr, description: scheduleDesc },
           prompt: values.prompt,
-          conversationId: '',
-          conversationTitle,
+          conversationId: executionMode === 'existing' ? selectedConversationId || '' : '',
+          conversationTitle: executionMode === 'existing' ? targetConversationTitle : conversationTitle,
           agentType: resolvedAgentType,
           createdBy: 'user',
           executionMode,
@@ -639,6 +741,29 @@ const CreateTaskDialog: React.FC<CreateTaskDialogProps> = ({
               <p className='m-0 text-12px leading-18px text-t-primary'>{selectedExecutionModeOption.description}</p>
             </div>
           </FormItem>
+
+          {executionMode === 'existing' && (
+            <FormItem label={t('cron.page.form.targetConversation')}>
+              <Select
+                value={selectedConversationId}
+                placeholder={t('cron.page.form.targetConversationPlaceholder')}
+                onChange={(value) => setSelectedConversationId(value)}
+              >
+                {availableConversations.map((conversation) => (
+                  <Option key={conversation.id} value={conversation.id}>
+                    {formatConversationOptionLabel(conversation, t)}
+                  </Option>
+                ))}
+              </Select>
+              {selectedConversation && (
+                <p className='mb-0 mt-8px text-12px leading-18px text-t-secondary'>
+                  {selectedConversation.channelChatId
+                    ? `${getConversationSourceLabel(selectedConversation.source, t)} · ${selectedConversation.channelChatId}`
+                    : getConversationSourceLabel(selectedConversation.source, t)}
+                </p>
+              )}
+            </FormItem>
+          )}
 
           <FormItem
             label={t('cron.page.form.prompt')}

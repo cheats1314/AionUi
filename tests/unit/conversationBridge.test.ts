@@ -35,6 +35,7 @@ vi.mock('../../src/common', () => ({
       getWorkspace: makeChannel('getWorkspace'),
       responseSearchWorkSpace: makeChannel('responseSearchWorkSpace'),
       warmup: makeChannel('warmup'),
+      listAll: makeChannel('listAll'),
       confirmation: {
         confirm: makeChannel('confirmation.confirm'),
         list: makeChannel('confirmation.list'),
@@ -153,6 +154,19 @@ describe('conversationBridge', () => {
 
       expect(result).toBeUndefined();
       expect(service.createConversation).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('listAll', () => {
+    it('returns all conversations from the injected service', async () => {
+      const conversations = [makeConversation('c1', '/ws/project'), makeConversation('c2', '/other')];
+      vi.mocked(service.listAllConversations).mockResolvedValue(conversations);
+
+      const handler = handlers['listAll'];
+      const result = await handler();
+
+      expect(service.listAllConversations).toHaveBeenCalled();
+      expect(result).toEqual(conversations);
     });
   });
 

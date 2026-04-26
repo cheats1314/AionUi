@@ -233,6 +233,10 @@ export function initConversationBridge(
     }
   });
 
+  ipcBridge.conversation.listAll.provider(async () => {
+    return conversationService.listAllConversations();
+  });
+
   ipcBridge.conversation.listByCronJob.provider(async ({ cronJobId }) => {
     return conversationService.getConversationsByCronJob(cronJobId);
   });

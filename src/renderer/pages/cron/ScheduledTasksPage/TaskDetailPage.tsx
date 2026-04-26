@@ -11,12 +11,33 @@ import { Button, Message, Switch, Popconfirm, Spin, Empty } from '@arco-design/w
 import { Left, Delete, PlayOne, Write, Attention } from '@icon-park/react';
 import { ipcBridge } from '@/common';
 import type { ICronJob } from '@/common/adapter/ipcBridge';
+import type { TChatConversation } from '@/common/config/storage';
 import { getAgentLogo } from '@renderer/utils/model/agentLogo';
 import CronStatusTag from './CronStatusTag';
 import CreateTaskDialog from './CreateTaskDialog';
 import { formatSchedule, formatNextRun } from '@renderer/pages/cron/cronUtils';
 import { useCronJobConversations } from '@renderer/pages/cron/useCronJobs';
 import { getActivityTime } from '@/renderer/utils/chat/timeline';
+
+function getConversationSourceLabel(source: string | undefined, t: (key: string) => string) {
+  switch (source) {
+    case 'weixin':
+      return t('cron.page.form.sourceWeChat');
+    case 'wecom':
+      return t('cron.page.form.sourceWeCom');
+    case 'telegram':
+      return t('cron.page.form.sourceTelegram');
+    case 'lark':
+      return t('cron.page.form.sourceLark');
+    case 'dingtalk':
+      return t('cron.page.form.sourceDingTalk');
+    case 'aionui':
+    case undefined:
+      return t('cron.page.form.sourceAionUi');
+    default:
+      return source;
+  }
+}
 
 const TaskDetailPage: React.FC = () => {
   const { t } = useTranslation();
@@ -26,6 +47,7 @@ const TaskDetailPage: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [editDialogVisible, setEditDialogVisible] = useState(false);
   const [runningNow, setRunningNow] = useState(false);
+  const [targetConversation, setTargetConversation] = useState<TChatConversation | null>(null);
 
   const isNewConversationMode = job?.target.executionMode === 'new_conversation';
   const isManualOnly = job?.schedule.kind === 'cron' && !job.schedule.expr;
@@ -47,6 +69,18 @@ const TaskDetailPage: React.FC = () => {
   useEffect(() => {
     void fetchJob();
   }, [fetchJob]);
+
+  useEffect(() => {
+    if (!job?.metadata.conversationId || job.target.executionMode === 'new_conversation') {
+      setTargetConversation(null);
+      return;
+    }
+
+    ipcBridge.conversation.get
+      .invoke({ id: job.metadata.conversationId })
+      .then((conversation) => setTargetConversation(conversation ?? null))
+      .catch(() => setTargetConversation(null));
+  }, [job]);
 
   // Auto-refresh when the job is updated or executed
   useEffect(() => {
@@ -289,6 +323,30 @@ const TaskDetailPage: React.FC = () => {
                 </div>
               </div>
             </section>
+
+            {!isNewConversationMode && (
+              <section className='flex flex-col gap-10px'>
+                <h2 className='m-0 text-13px font-medium text-t-secondary'>{t('cron.detail.targetConversation')}</h2>
+                {targetConversation ? (
+                  <button
+                    type='button'
+                    className='flex cursor-pointer flex-col items-start gap-4px rounded-12px border border-solid border-[var(--color-border-2)] bg-fill-2 px-16px py-14px text-left'
+                    onClick={() => navigate(`/conversation/${targetConversation.id}`)}
+                  >
+                    <span className='text-14px leading-22px text-t-primary'>{targetConversation.name || targetConversation.id}</span>
+                    <span className='text-12px leading-18px text-t-secondary'>
+                      {targetConversation.channelChatId
+                        ? `${getConversationSourceLabel(targetConversation.source, t)} · ${targetConversation.channelChatId}`
+                        : getConversationSourceLabel(targetConversation.source, t)}
+                    </span>
+                  </button>
+                ) : (
+                  <span className='text-14px leading-22px text-t-secondary'>
+                    {job.metadata.conversationTitle || t('cron.detail.targetConversationMissing')}
+                  </span>
+                )}
+              </section>
+            )}
 
             {job.metadata.agentConfig?.modelId && (
               <section className='flex flex-col gap-10px'>

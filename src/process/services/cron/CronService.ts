@@ -212,6 +212,12 @@ export class CronService {
       }
     }
 
+    let conversationTitle = params.conversationTitle;
+    if (!conversationTitle && params.executionMode !== 'new_conversation' && params.conversationId) {
+      const conversation = await this.conversationRepo.getConversation(params.conversationId);
+      conversationTitle = conversation?.name;
+    }
+
     const now = Date.now();
     const jobId = `cron_${uuid()}`;
 
@@ -227,7 +233,7 @@ export class CronService {
       },
       metadata: {
         conversationId: params.conversationId,
-        conversationTitle: params.conversationTitle,
+        conversationTitle,
         agentType: params.agentType,
         createdBy: params.createdBy,
         createdAt: now,
@@ -281,6 +287,24 @@ export class CronService {
       throw new Error(`Job not found: ${jobId}`);
     }
 
+    const existingMode = existing.target.executionMode ?? 'existing';
+    const nextMode = updates.target?.executionMode ?? existingMode;
+    const nextConversationId = updates.metadata?.conversationId ?? existing.metadata.conversationId;
+    const nextConversationTitle = updates.metadata?.conversationTitle;
+
+    if (nextMode !== 'new_conversation' && nextConversationId && nextConversationId !== existing.metadata.conversationId) {
+      const existingJobs = await this.repo.listByConversation(nextConversationId);
+      const conflictingJob = existingJobs.find((job) => job.id !== jobId && (job.target.executionMode ?? 'existing') !== 'new_conversation');
+      if (conflictingJob) {
+        throw new Error(
+          i18n.t('cron:error.alreadyExists', {
+            name: conflictingJob.name,
+            id: conflictingJob.id,
+          })
+        );
+      }
+    }
+
     // Stop existing timer
     this.stopTimer(jobId);
 
@@ -289,6 +313,55 @@ export class CronService {
 
     // Get updated job
     const updated = (await this.repo.getById(jobId))!;
+
+    try {
+      const oldConversationId = existing.metadata.conversationId;
+      const oldMode = existing.target.executionMode ?? 'existing';
+      const newConversationId = updated.metadata.conversationId;
+      const newMode = updated.target.executionMode ?? 'existing';
+
+      if (oldMode !== 'new_conversation' && oldConversationId && (oldConversationId !== newConversationId || newMode === 'new_conversation')) {
+        const oldConversation = await this.conversationRepo.getConversation(oldConversationId);
+        if (oldConversation) {
+          const oldExtra = { ...((oldConversation.extra ?? {}) as Record<string, unknown>) };
+          if (oldExtra.cronJobId === jobId) {
+            delete oldExtra.cronJobId;
+            await this.conversationRepo.updateConversation(oldConversationId, {
+              extra: oldExtra as TChatConversation['extra'],
+            });
+          }
+        }
+      }
+
+      if (newMode !== 'new_conversation' && newConversationId) {
+        const newConversation = await this.conversationRepo.getConversation(newConversationId);
+        if (newConversation) {
+          const newExtra = { ...((newConversation.extra ?? {}) as Record<string, unknown>), cronJobId: jobId };
+          const conversationUpdates: Partial<TChatConversation> = {
+            extra: newExtra as TChatConversation['extra'],
+          };
+          if (oldConversationId !== newConversationId) {
+            conversationUpdates.modifyTime = Date.now();
+          }
+          await this.conversationRepo.updateConversation(newConversationId, conversationUpdates);
+
+          if ((!updated.metadata.conversationTitle || nextConversationTitle !== undefined) && newConversation.name) {
+            await this.repo.update(jobId, {
+              metadata: {
+                ...updated.metadata,
+                conversationTitle: nextConversationTitle ?? newConversation.name,
+              },
+            });
+            updated.metadata.conversationTitle = nextConversationTitle ?? newConversation.name;
+          }
+        } else if (oldConversationId !== newConversationId || nextConversationTitle !== undefined) {
+          throw new Error(i18n.t('cron:error.conversationNotFound'));
+        }
+      }
+    } catch (error) {
+      console.warn('[CronService] Failed to sync cron conversation binding:', error);
+      throw error;
+    }
 
     // Recalculate next run time if schedule changed or job is being enabled
     if (updates.schedule || (updates.enabled === true && !existing.enabled)) {
