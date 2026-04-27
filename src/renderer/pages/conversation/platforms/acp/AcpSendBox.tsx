@@ -418,6 +418,51 @@ Please check your local CLI tool authentication status`,
     }
   });
 
+  useEffect(() => {
+    if (!rewindSelectionOpen || backend !== 'claude' || rewindCandidates.length === 0) {
+      return;
+    }
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (rewindPending) {
+        return;
+      }
+
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        setRewindSelectionOpen(false);
+        return;
+      }
+
+      if (event.key === 'ArrowDown') {
+        event.preventDefault();
+        setRewindActiveIndex((prev) => (prev + 1) % rewindCandidates.length);
+        return;
+      }
+
+      if (event.key === 'ArrowUp') {
+        event.preventDefault();
+        setRewindActiveIndex((prev) => (prev - 1 + rewindCandidates.length) % rewindCandidates.length);
+        return;
+      }
+
+      if (event.key === 'Enter' && !event.shiftKey) {
+        const activeCandidate = rewindCandidates[rewindActiveIndex];
+        if (!activeCandidate) {
+          return;
+        }
+        event.preventDefault();
+        setRewindSelectionOpen(false);
+        void executeRollback(activeCandidate.id);
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [backend, executeRollback, rewindActiveIndex, rewindCandidates, rewindPending, rewindSelectionOpen]);
+
   // Stop conversation handler
   const handleStop = async (): Promise<void> => {
     // Use finally to ensure UI state is reset even if backend stop fails
