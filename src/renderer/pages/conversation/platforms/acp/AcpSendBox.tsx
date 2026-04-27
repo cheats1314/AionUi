@@ -322,6 +322,7 @@ Please check your local CLI tool authentication status`,
         await reloadMessageListFromDatabase();
         const restoredInput = result.data?.restoredInput ?? '';
         setContent(restoredInput);
+        emitter.emit('sendbox.focus');
         emitter.emit('chat.history.refresh');
         return restoredInput;
       } finally {

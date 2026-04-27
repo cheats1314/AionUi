@@ -532,6 +532,24 @@ const SendBox: React.FC<{
     [getTextareaElement]
   );
 
+  useAddEventListener(
+    'sendbox.focus',
+    (requestedCaret) => {
+      requestAnimationFrame(() => {
+        const textarea = getTextareaElement();
+        if (!textarea) {
+          return;
+        }
+        textarea.focus();
+        const caret = Math.max(0, Math.min(requestedCaret ?? textarea.value.length, textarea.value.length));
+        textarea.setSelectionRange(caret, caret);
+        setCaretPosition(caret);
+        syncHighlightScroll(textarea);
+      });
+    },
+    [getTextareaElement, syncHighlightScroll]
+  );
+
   const syncHighlightTextMetrics = useCallback(
     (target?: EventTarget | null) => {
       const textarea = target instanceof HTMLTextAreaElement ? target : getTextareaElement();
