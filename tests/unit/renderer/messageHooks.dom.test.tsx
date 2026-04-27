@@ -6,6 +6,7 @@ import {
   useAddOrUpdateMessage,
   useMessageList,
   useMessageLstCache,
+  useReloadMessageListFromDatabase,
   useRemoveMessageByMsgId,
 } from '@/renderer/pages/conversation/Messages/hooks';
 
@@ -42,6 +43,7 @@ const CacheProbe = ({ conversationId }: { conversationId: string }) => {
 const MutationProbe = () => {
   const addOrUpdateMessage = useAddOrUpdateMessage();
   const removeMessageByMsgId = useRemoveMessageByMsgId();
+  const reloadMessageListFromDatabase = useReloadMessageListFromDatabase('conv-1');
   const messages = useMessageList();
 
   return (
@@ -66,6 +68,9 @@ const MutationProbe = () => {
       </button>
       <button type='button' onClick={() => removeMessageByMsgId('msg-1')}>
         remove-message
+      </button>
+      <button type='button' onClick={() => void reloadMessageListFromDatabase()}>
+        reload-messages
       </button>
       <pre data-testid='mutated-messages'>{JSON.stringify(messages)}</pre>
     </div>
@@ -143,6 +148,39 @@ describe('message hooks cache merge', () => {
 
     await waitFor(() => {
       expect(screen.getByTestId('mutated-messages').textContent).not.toContain('msg-1');
+    });
+  });
+
+  it('replaces the local list when reloading messages from the database', async () => {
+    mockGetConversationMessagesInvoke.mockResolvedValue([
+      {
+        id: 'db-2',
+        msg_id: 'db-2',
+        conversation_id: 'conv-1',
+        type: 'text',
+        position: 'right',
+        content: { content: 'database replacement' },
+      },
+    ]);
+
+    render(
+      <MessageListProvider value={[]}>
+        <MutationProbe />
+      </MessageListProvider>
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'add-message' }));
+
+    await waitFor(() => {
+      expect(screen.getByTestId('mutated-messages').textContent).toContain('queued message');
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: 'reload-messages' }));
+
+    await waitFor(() => {
+      const content = screen.getByTestId('mutated-messages').textContent ?? '';
+      expect(content).toContain('database replacement');
+      expect(content).not.toContain('queued message');
     });
   });
 });
