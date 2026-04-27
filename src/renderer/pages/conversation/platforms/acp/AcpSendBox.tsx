@@ -144,6 +144,7 @@ const AcpSendBox: React.FC<{
   const reloadMessageListFromDatabase = useReloadMessageListFromDatabase(conversation_id);
   const [rewindSelectionOpen, setRewindSelectionOpen] = React.useState(false);
   const [rewindPending, setRewindPending] = React.useState(false);
+  const [rewindActiveIndex, setRewindActiveIndex] = React.useState(0);
 
   // Shared file handling logic
   const { handleFilesAdded, clearFiles } = useSendBoxFiles({
@@ -165,11 +166,18 @@ const AcpSendBox: React.FC<{
             typeof message.content.content === 'string' &&
             message.content.content.trim().length > 0
         )
-        .map((message) => ({
+        .map((message, index, items) => ({
           id: message.id,
           input: message.content.content,
+          title:
+            index === items.length - 1
+              ? t('chat.rewind.previousTurn', { defaultValue: 'Previous turn' })
+              : t('chat.rewind.turnOffset', {
+                  defaultValue: `${items.length - index - 1} turns ago`,
+                }),
           description: message.content.content.replace(/\s+/g, ' ').trim().slice(0, 120),
         }))
+        .slice(0, 12)
         .reverse(),
     [conversation_id, messageList]
   );
@@ -339,6 +347,7 @@ Please check your local CLI tool authentication status`,
         Message.warning(t('chat.rewind.noTurn', { defaultValue: 'There is no previous turn to rewind.' }));
         return;
       }
+      setRewindActiveIndex(0);
       setRewindSelectionOpen(true);
       return;
     }
@@ -391,6 +400,7 @@ Please check your local CLI tool authentication status`,
           Message.warning(t('chat.rewind.noTurn', { defaultValue: 'There is no previous turn to rewind.' }));
           return;
         }
+        setRewindActiveIndex(0);
         setRewindSelectionOpen(true);
         return;
       }
@@ -438,10 +448,15 @@ Please check your local CLI tool authentication status`,
       {rewindSelectionOpen && backend === 'claude' && (
         <div className='mb-8px rounded-12px border border-solid border-[var(--color-border-2)] bg-[var(--color-bg-1)] p-6px shadow-sm'>
           <div className='flex items-center justify-between gap-8px px-8px py-6px'>
-            <div className='text-12px text-t-secondary'>
-              {t('chat.rewind.pickTurn', {
-                defaultValue: 'Choose a turn to rewind to. That turn and everything after it will be removed.',
-              })}
+            <div>
+              <div className='text-13px font-semibold text-t-primary'>
+                {t('chat.rewind.title', { defaultValue: 'Rewind conversation' })}
+              </div>
+              <div className='text-12px text-t-secondary'>
+                {t('chat.rewind.pickTurn', {
+                  defaultValue: 'Choose a turn to rewind to. That turn and everything after it will be removed.',
+                })}
+              </div>
             </div>
             <Button
               size='mini'
@@ -455,18 +470,32 @@ Please check your local CLI tool authentication status`,
             </Button>
           </div>
           <div className='max-h-220px overflow-y-auto'>
-            {rewindCandidates.map((candidate) => (
+            {rewindCandidates.map((candidate, index) => (
               <button
                 key={candidate.id}
                 type='button'
                 disabled={rewindPending}
-                className='w-full text-left px-10px py-8px rounded-8px transition-all border border-transparent hover:bg-[var(--color-fill-1)] disabled:cursor-not-allowed disabled:opacity-60'
+                className='w-full text-left px-10px py-8px rounded-8px transition-all border disabled:cursor-not-allowed disabled:opacity-60'
+                style={{
+                  borderColor:
+                    index === rewindActiveIndex ? 'var(--color-border-2)' : 'transparent',
+                  background:
+                    index === rewindActiveIndex ? 'var(--color-fill-1)' : 'transparent',
+                }}
+                onMouseEnter={() => {
+                  setRewindActiveIndex(index);
+                }}
                 onClick={() => {
                   setRewindSelectionOpen(false);
                   void executeRollback(candidate.id);
                 }}
               >
-                <div className='text-13px font-medium text-t-primary'>{candidate.description || candidate.input}</div>
+                <div className='flex items-center justify-between gap-8px'>
+                  <div className='min-w-0'>
+                    <div className='text-12px font-medium text-t-secondary'>{candidate.title}</div>
+                    <div className='text-13px font-medium text-t-primary truncate'>{candidate.description || candidate.input}</div>
+                  </div>
+                </div>
               </button>
             ))}
           </div>
