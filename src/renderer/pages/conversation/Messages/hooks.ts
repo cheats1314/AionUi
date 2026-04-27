@@ -363,6 +363,37 @@ export const useRemoveMessageByMsgId = () => {
   );
 };
 
+export const useReplaceMessageList = () => {
+  const update = useUpdateMessageList();
+
+  return useCallback(
+    (messages: TMessage[]) => {
+      update(() => messages);
+    },
+    [update]
+  );
+};
+
+export const useReloadMessageListFromDatabase = (conversationId?: string) => {
+  const replace = useReplaceMessageList();
+
+  return useCallback(async () => {
+    if (!conversationId) {
+      replace([]);
+      return [] as TMessage[];
+    }
+
+    const messages = await ipcBridge.database.getConversationMessages.invoke({
+      conversation_id: conversationId,
+      page: 0,
+      pageSize: 10000,
+    });
+    const nextMessages = Array.isArray(messages) ? messages : [];
+    replace(nextMessages);
+    return nextMessages;
+  }, [conversationId, replace]);
+};
+
 export const useMessageLstCache = (key: string) => {
   const update = useUpdateMessageList();
   useEffect(() => {

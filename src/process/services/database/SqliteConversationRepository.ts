@@ -56,6 +56,15 @@ export class SqliteConversationRepository implements IConversationRepository {
     };
   }
 
+  async deleteMessages(ids: string[]): Promise<number> {
+    if (ids.length === 0) {
+      return 0;
+    }
+    const db = await this.getDb();
+    const result = db.deleteMessages(ids);
+    return result.success ? (result.data ?? 0) : 0;
+  }
+
   async insertMessage(message: TMessage): Promise<void> {
     const db = await this.getDb();
     db.insertMessage(message);

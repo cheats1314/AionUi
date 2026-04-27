@@ -11,7 +11,7 @@ import type { IConversationService, CreateConversationParams } from '@process/se
 import type { IWorkerTaskManager } from '@process/task/IWorkerTaskManager';
 import type { TeamSessionService } from '@process/team/TeamSessionService';
 import { ipcBridge } from '@/common';
-import { removeFromMessageCache } from '@process/utils/message';
+import { removeFromMessageCache, resetMessageCacheForRewrite } from '@process/utils/message';
 import {
   getSkillsDir,
   getBuiltinSkillsCopyDir,
@@ -484,6 +484,35 @@ export function initConversationBridge(
         conversationId: conversation_id,
         error: error instanceof Error ? error.message : String(error),
       });
+      return {
+        success: false,
+        msg: error instanceof Error ? error.message : String(error),
+      };
+    }
+  });
+
+  ipcBridge.conversation.rollbackToMessage.provider(async ({ conversation_id, target_message_id }) => {
+    try {
+      const task = workerTaskManager.getTask(conversation_id);
+      if (task) {
+        workerTaskManager.kill(conversation_id);
+      }
+
+      resetMessageCacheForRewrite(conversation_id);
+      const result = await conversationService.rollbackConversationToUserMessage(conversation_id, target_message_id);
+
+      const conversation = await conversationService.getConversation(conversation_id);
+      if (conversation) {
+        emitConversationListChanged(conversation, 'updated');
+      }
+      await refreshTrayMenuSafely();
+
+      return {
+        success: true,
+        data: result,
+      };
+    } catch (error) {
+      console.error('[conversationBridge] Failed to rollback conversation:', error);
       return {
         success: false,
         msg: error instanceof Error ? error.message : String(error),

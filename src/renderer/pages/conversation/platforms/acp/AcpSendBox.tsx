@@ -17,7 +17,11 @@ import { createSetUploadFile, useSendBoxFiles } from '@/renderer/hooks/chat/useS
 import { useSlashCommands } from '@/renderer/hooks/chat/useSlashCommands';
 import { useOpenFileSelector } from '@/renderer/hooks/file/useOpenFileSelector';
 import { useLatestRef } from '@/renderer/hooks/ui/useLatestRef';
-import { useAddOrUpdateMessage } from '@/renderer/pages/conversation/Messages/hooks';
+import {
+  useAddOrUpdateMessage,
+  useMessageList,
+  useReloadMessageListFromDatabase,
+} from '@/renderer/pages/conversation/Messages/hooks';
 import { assertBridgeSuccess } from '@/renderer/pages/conversation/platforms/assertBridgeSuccess';
 import {
   shouldEnqueueConversationCommand,
@@ -31,7 +35,7 @@ import { iconColors } from '@/renderer/styles/colors';
 import { emitter, useAddEventListener } from '@/renderer/utils/emitter';
 import { mergeFileSelectionItems } from '@/renderer/utils/file/fileSelection';
 import { buildDisplayMessage } from '@/renderer/utils/file/messageFiles';
-import { Tag } from '@arco-design/web-react';
+import { Button, Message, Tag } from '@arco-design/web-react';
 import { Shield } from '@icon-park/react';
 import React, { useCallback, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -115,6 +119,7 @@ const AcpSendBox: React.FC<{
     aiProcessing,
     setAiProcessing,
     resetState,
+    resetConversationState,
     tokenUsage,
     contextLimit,
     hasThinkingMessage,
@@ -135,6 +140,10 @@ const AcpSendBox: React.FC<{
 
   const addOrUpdateMessage = useAddOrUpdateMessage(); // Move this here so it's available in useEffect
   const addOrUpdateMessageRef = useLatestRef(addOrUpdateMessage);
+  const messageList = useMessageList();
+  const reloadMessageListFromDatabase = useReloadMessageListFromDatabase(conversation_id);
+  const [rewindSelectionOpen, setRewindSelectionOpen] = React.useState(false);
+  const [rewindPending, setRewindPending] = React.useState(false);
 
   // Shared file handling logic
   const { handleFilesAdded, clearFiles } = useSendBoxFiles({
@@ -144,6 +153,26 @@ const AcpSendBox: React.FC<{
     setUploadFile,
   });
   const isBusy = running || aiProcessing;
+  const rewindCandidates = React.useMemo(
+    () =>
+      messageList
+        .filter(
+          (message): message is Extract<(typeof messageList)[number], { type: 'text' }> =>
+            message.conversation_id === conversation_id &&
+            message.type === 'text' &&
+            message.position === 'right' &&
+            !message.hidden &&
+            typeof message.content.content === 'string' &&
+            message.content.content.trim().length > 0
+        )
+        .map((message) => ({
+          id: message.id,
+          input: message.content.content,
+          description: message.content.content.replace(/\s+/g, ' ').trim().slice(0, 120),
+        }))
+        .reverse(),
+    [conversation_id, messageList]
+  );
 
   // Register handler for adding text from preview panel to sendbox
   useEffect(() => {
@@ -265,7 +294,55 @@ Please check your local CLI tool authentication status`,
     onExecute: executeCommand,
   });
 
+  const executeRollback = useCallback(
+    async (targetMessageId: string) => {
+      setRewindPending(true);
+      try {
+        const result = await ipcBridge.conversation.rollbackToMessage.invoke({
+          conversation_id,
+          target_message_id: targetMessageId,
+        });
+        assertBridgeSuccess(result, 'Failed to rewind conversation');
+
+        clearFiles();
+        emitter.emit('acp.selected.file.clear');
+        clear();
+        resetConversationState();
+        resetActiveExecution('external-reset');
+        await reloadMessageListFromDatabase();
+        const restoredInput = result.data?.restoredInput ?? '';
+        setContent(restoredInput);
+        emitter.emit('chat.history.refresh');
+        return restoredInput;
+      } finally {
+        setRewindPending(false);
+      }
+    },
+    [clear, clearFiles, conversation_id, reloadMessageListFromDatabase, resetActiveExecution, resetConversationState, setContent]
+  );
+
   const onSendHandler = async (message: string) => {
+    const trimmedMessage = message.trim();
+
+    if (backend === 'codex' && trimmedMessage === '/undo') {
+      const latestCandidate = rewindCandidates[0];
+      if (!latestCandidate) {
+        Message.warning(t('chat.rewind.noTurn', { defaultValue: 'There is no previous turn to undo.' }));
+        return;
+      }
+      await executeRollback(latestCandidate.id);
+      return;
+    }
+
+    if (backend === 'claude' && trimmedMessage === '/rewind') {
+      if (rewindCandidates.length === 0) {
+        Message.warning(t('chat.rewind.noTurn', { defaultValue: 'There is no previous turn to rewind.' }));
+        return;
+      }
+      setRewindSelectionOpen(true);
+      return;
+    }
+
     const atPathFiles = atPath.map((item) => (typeof item === 'string' ? item : item.path));
     const allFiles = [...uploadFile, ...atPathFiles];
 
@@ -307,6 +384,22 @@ Please check your local CLI tool authentication status`,
     onFilesSelected: appendSelectedFiles,
   });
 
+  const handleBuiltinSlashCommand = useCallback(
+    (name: string) => {
+      if (name === 'rewind' && backend === 'claude') {
+        if (rewindCandidates.length === 0) {
+          Message.warning(t('chat.rewind.noTurn', { defaultValue: 'There is no previous turn to rewind.' }));
+          return;
+        }
+        setRewindSelectionOpen(true);
+        return;
+      }
+
+      onSlashBuiltinCommand?.(name);
+    },
+    [backend, onSlashBuiltinCommand, rewindCandidates.length, t]
+  );
+
   useAddEventListener('acp.selected.file', setAtPath);
   useAddEventListener('acp.selected.file.append', (selectedItems: Array<string | FileOrFolderItem>) => {
     const merged = mergeFileSelectionItems(atPathRef.current, selectedItems);
@@ -342,6 +435,43 @@ Please check your local CLI tool authentication status`,
         onClear={clear}
       />
       <ThoughtDisplay running={aiProcessing && !hasThinkingMessage} onStop={handleStop} />
+      {rewindSelectionOpen && backend === 'claude' && (
+        <div className='mb-8px rounded-12px border border-solid border-[var(--color-border-2)] bg-[var(--color-bg-1)] p-6px shadow-sm'>
+          <div className='flex items-center justify-between gap-8px px-8px py-6px'>
+            <div className='text-12px text-t-secondary'>
+              {t('chat.rewind.pickTurn', {
+                defaultValue: 'Choose a turn to rewind to. That turn and everything after it will be removed.',
+              })}
+            </div>
+            <Button
+              size='mini'
+              type='text'
+              disabled={rewindPending}
+              onClick={() => {
+                setRewindSelectionOpen(false);
+              }}
+            >
+              {t('common.cancel')}
+            </Button>
+          </div>
+          <div className='max-h-220px overflow-y-auto'>
+            {rewindCandidates.map((candidate) => (
+              <button
+                key={candidate.id}
+                type='button'
+                disabled={rewindPending}
+                className='w-full text-left px-10px py-8px rounded-8px transition-all border border-transparent hover:bg-[var(--color-fill-1)] disabled:cursor-not-allowed disabled:opacity-60'
+                onClick={() => {
+                  setRewindSelectionOpen(false);
+                  void executeRollback(candidate.id);
+                }}
+              >
+                <div className='text-13px font-medium text-t-primary'>{candidate.description || candidate.input}</div>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
 
       <SendBox
         value={content}
@@ -429,8 +559,22 @@ Please check your local CLI tool authentication status`,
           </>
         }
         onSend={onSendHandler}
-        slashCommands={slashCommands}
-        onSlashBuiltinCommand={onSlashBuiltinCommand}
+        slashCommands={
+          backend === 'claude'
+            ? [
+                {
+                  name: 'rewind',
+                  description: t('chat.rewind.commandDescription', {
+                    defaultValue: 'Pick a previous turn and rewind the conversation',
+                  }),
+                  kind: 'builtin',
+                  source: 'builtin',
+                },
+                ...slashCommands,
+              ]
+            : slashCommands
+        }
+        onSlashBuiltinCommand={handleBuiltinSlashCommand}
         allowSendWhileLoading
         compactActions={!!teamId}
         sendButtonPrefix={

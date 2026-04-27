@@ -61,6 +61,10 @@ export const conversation = {
     IBridgeResponse<ConversationSideQuestionResult>,
     { conversation_id: string; question: string }
   >('conversation.ask-side-question'),
+  rollbackToMessage: bridge.buildProvider<
+    IBridgeResponse<{ restoredInput: string; deletedMessageIds: string[]; deletedCount: number }>,
+    { conversation_id: string; target_message_id: string }
+  >('conversation.rollback-to-message'),
   confirmMessage: bridge.buildProvider<IBridgeResponse, IConfirmMessageParams>('conversation.confirm.message'), // 通用确认消息
   responseStream: bridge.buildEmitter<IResponseMessage>('chat.response.stream'), // 接收消息（统一接口）
   turnCompleted: bridge.buildEmitter<IConversationTurnCompletedEvent>('conversation.turn.completed'),
