@@ -176,6 +176,8 @@ const AcpSendBox: React.FC<{
                   defaultValue: `${items.length - index - 1} turns ago`,
                 }),
           description: message.content.content.replace(/\s+/g, ' ').trim().slice(0, 120),
+          discardCount: index + 1,
+          keepCount: items.length - index - 1,
         }))
         .slice(0, 12)
         .reverse(),
@@ -539,6 +541,11 @@ Please check your local CLI tool authentication status`,
                   <div className='min-w-0'>
                     <div className='text-12px font-medium text-t-secondary'>{candidate.title}</div>
                     <div className='text-13px font-medium text-t-primary truncate'>{candidate.description || candidate.input}</div>
+                    <div className='text-11px text-t-secondary mt-2px'>
+                      {candidate.keepCount > 0
+                        ? `${candidate.keepCount} earlier turn${candidate.keepCount > 1 ? 's' : ''} kept · ${candidate.discardCount} turn${candidate.discardCount > 1 ? 's' : ''} removed`
+                        : `This will rewind to the start and remove ${candidate.discardCount} turn${candidate.discardCount > 1 ? 's' : ''}`}
+                    </div>
                   </div>
                 </div>
               </button>
