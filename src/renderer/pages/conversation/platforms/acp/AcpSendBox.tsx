@@ -448,6 +448,18 @@ Please check your local CLI tool authentication status`,
         return;
       }
 
+      if (/^[1-9]$/.test(event.key)) {
+        const selectedIndex = Number(event.key) - 1;
+        const selectedCandidate = rewindCandidates[selectedIndex];
+        if (!selectedCandidate) {
+          return;
+        }
+        event.preventDefault();
+        setRewindSelectionOpen(false);
+        void executeRollback(selectedCandidate.id);
+        return;
+      }
+
       if (event.key === 'Enter' && !event.shiftKey) {
         const activeCandidate = rewindCandidates[rewindActiveIndex];
         if (!activeCandidate) {
@@ -539,7 +551,10 @@ Please check your local CLI tool authentication status`,
               >
                 <div className='flex items-center justify-between gap-8px'>
                   <div className='min-w-0'>
-                    <div className='text-12px font-medium text-t-secondary'>{candidate.title}</div>
+                    <div className='text-12px font-medium text-t-secondary'>
+                      {index < 9 ? `${index + 1}. ` : ''}
+                      {candidate.title}
+                    </div>
                     <div className='text-13px font-medium text-t-primary truncate'>{candidate.description || candidate.input}</div>
                     <div className='text-11px text-t-secondary mt-2px'>
                       {candidate.keepCount > 0
