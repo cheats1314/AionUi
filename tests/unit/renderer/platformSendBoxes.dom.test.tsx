@@ -902,7 +902,7 @@ describe('platform send box queue integration', () => {
     });
   });
 
-  it('uses the shared rollback flow for Codex /undo', async () => {
+  it('opens the rewind picker on Codex /undo (alias of /rewind)', async () => {
     mockSendboxMessage = '/undo';
     mockUseMessageList.mockReturnValue([
       {
@@ -919,14 +919,24 @@ describe('platform send box queue integration', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'trigger-send' }));
 
+    // /undo and /rewind are pure aliases — both open the picker on every
+    // backend rather than executing an immediate single-turn rollback.
+    await waitFor(() => {
+      expect(screen.getByText(/Choose a turn to rewind to/i)).toBeInTheDocument();
+    });
+
+    expect(mockConversationRollbackInvoke).not.toHaveBeenCalled();
+    expect(mockAcpSendInvoke).not.toHaveBeenCalled();
+
+    // Confirming the picker (Enter on the only candidate) drives the shared
+    // rollback flow.
+    fireEvent.keyDown(window, { key: 'Enter' });
     await waitFor(() => {
       expect(mockConversationRollbackInvoke).toHaveBeenCalledWith({
         conversation_id: 'conv-acp',
         target_message_id: 'msg-user-2',
       });
     });
-
-    expect(mockAcpSendInvoke).not.toHaveBeenCalled();
     expect(queueSpies.clear).toHaveBeenCalled();
     expect(queueSpies.resetActiveExecution).toHaveBeenCalledWith('external-reset');
     expect(mockResetAcpConversationState).toHaveBeenCalled();

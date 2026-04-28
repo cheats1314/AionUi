@@ -494,6 +494,92 @@ describe('ConversationServiceImpl.getConversationsByCronJob', () => {
   });
 });
 
+describe('ConversationServiceImpl.rollbackConversationToUserMessage', () => {
+  it('removes the target user message and everything after it (CLI /rewind parity)', async () => {
+    const conversation = makeConversation({
+      id: 'c1',
+      type: 'acp' as TChatConversation['type'],
+      extra: { acpSessionId: 'session-1' } as TChatConversation['extra'],
+    });
+    const messages = [
+      { id: 'u1', type: 'text', position: 'right', content: { content: 'q1' } } as any,
+      { id: 'a1', type: 'text', position: 'left', content: { content: 'a1' } } as any,
+      { id: 'u2', type: 'text', position: 'right', content: { content: 'q2 prompt' } } as any,
+      { id: 'a2', type: 'text', position: 'left', content: { content: 'a2' } } as any,
+      { id: 'u3', type: 'text', position: 'right', content: { content: 'q3' } } as any,
+      { id: 'a3', type: 'text', position: 'left', content: { content: 'a3' } } as any,
+    ];
+    const repo = makeRepo({
+      getConversation: vi.fn(async () => conversation),
+      getMessages: vi.fn(async () => ({ data: messages, total: messages.length, hasMore: false })),
+      deleteMessages: vi.fn(async () => 4),
+      updateConversation: vi.fn(async () => undefined),
+    });
+    const svc = new ConversationServiceImpl(repo);
+
+    const result = await svc.rollbackConversationToUserMessage('c1', 'u2');
+
+    // u2 itself + everything after is deleted (the picker rewinds to "right
+    // *before* this prompt"). Its text is returned so the composer can be
+    // repopulated for re-editing.
+    expect(repo.deleteMessages).toHaveBeenCalledWith(['u2', 'a2', 'u3', 'a3']);
+    expect(result.deletedCount).toBe(4);
+    expect(result.restoredInput).toBe('q2 prompt');
+  });
+
+  it('also rolls back non-ACP conversations (parity across agents)', async () => {
+    const conversation = makeConversation({
+      id: 'c1',
+      type: 'gemini' as TChatConversation['type'],
+      extra: {} as TChatConversation['extra'],
+    });
+    const messages = [
+      { id: 'u1', type: 'text', position: 'right', content: { content: 'q1' } } as any,
+      { id: 'a1', type: 'text', position: 'left', content: { content: 'a1' } } as any,
+      { id: 'u2', type: 'text', position: 'right', content: { content: 'q2' } } as any,
+    ];
+    const repo = makeRepo({
+      getConversation: vi.fn(async () => conversation),
+      getMessages: vi.fn(async () => ({ data: messages, total: messages.length, hasMore: false })),
+      deleteMessages: vi.fn(async () => 3),
+      updateConversation: vi.fn(async () => undefined),
+    });
+    const svc = new ConversationServiceImpl(repo);
+
+    const result = await svc.rollbackConversationToUserMessage('c1', 'u1');
+
+    expect(repo.deleteMessages).toHaveBeenCalledWith(['u1', 'a1', 'u2']);
+    expect(result.deletedCount).toBe(3);
+  });
+
+  it('throws when the target message is not a user message', async () => {
+    const conversation = makeConversation({
+      id: 'c1',
+      type: 'acp' as TChatConversation['type'],
+    });
+    const repo = makeRepo({
+      getConversation: vi.fn(async () => conversation),
+      getMessages: vi.fn(async () => ({
+        data: [{ id: 'a1', type: 'text', position: 'left', content: { content: 'a' } } as any],
+        total: 1,
+        hasMore: false,
+      })),
+    });
+    const svc = new ConversationServiceImpl(repo);
+    await expect(svc.rollbackConversationToUserMessage('c1', 'a1')).rejects.toThrow(/user text message/);
+  });
+
+  it('throws when the target message id is missing', async () => {
+    const conversation = makeConversation({ id: 'c1', type: 'acp' as TChatConversation['type'] });
+    const repo = makeRepo({
+      getConversation: vi.fn(async () => conversation),
+      getMessages: vi.fn(async () => ({ data: [], total: 0, hasMore: false })),
+    });
+    const svc = new ConversationServiceImpl(repo);
+    await expect(svc.rollbackConversationToUserMessage('c1', 'nope')).rejects.toThrow(/Target message not found/);
+  });
+});
+
 describe('ConversationServiceImpl.clearAllMessages', () => {
   it('throws when conversation is missing', async () => {
     const repo = makeRepo({ getConversation: vi.fn(async () => undefined) });
@@ -501,12 +587,28 @@ describe('ConversationServiceImpl.clearAllMessages', () => {
     await expect(svc.clearAllMessages('missing')).rejects.toThrow(/Conversation not found/);
   });
 
-  it('rejects non-ACP conversations to keep parity with rewind support', async () => {
+  it('clears messages on non-ACP conversations too (Gemini, openclaw, ...)', async () => {
+    const conversation = makeConversation({
+      id: 'c1',
+      type: 'gemini' as TChatConversation['type'],
+      extra: { lastTokenUsage: 7 } as TChatConversation['extra'],
+    });
     const repo = makeRepo({
-      getConversation: vi.fn(async () => makeConversation({ id: 'c1', type: 'gemini' })),
+      getConversation: vi.fn(async () => conversation),
+      getMessages: vi.fn(async () => ({
+        data: [{ id: 'm1' } as any, { id: 'm2' } as any],
+        total: 2,
+        hasMore: false,
+      })),
+      deleteMessages: vi.fn(async () => 2),
+      updateConversation: vi.fn(async () => undefined),
     });
     const svc = new ConversationServiceImpl(repo);
-    await expect(svc.clearAllMessages('c1')).rejects.toThrow(/ACP/);
+
+    const result = await svc.clearAllMessages('c1');
+
+    expect(repo.deleteMessages).toHaveBeenCalledWith(['m1', 'm2']);
+    expect(result.deletedCount).toBe(2);
   });
 
   it('deletes all messages and resets the ACP session extras', async () => {

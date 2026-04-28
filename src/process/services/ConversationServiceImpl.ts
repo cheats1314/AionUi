@@ -127,10 +127,6 @@ export class ConversationServiceImpl implements IConversationService {
       throw new Error('Conversation not found');
     }
 
-    if (conversation.type !== 'acp') {
-      throw new Error('Rollback is currently only supported for ACP conversations');
-    }
-
     const { data: messages } = await this.repo.getMessages(id, 0, 10000, 'ASC');
     const targetIndex = messages.findIndex((message) => message.id === targetUserMessageId);
     if (targetIndex < 0) {
@@ -142,12 +138,18 @@ export class ConversationServiceImpl implements IConversationService {
       throw new Error('Rollback target must be a user text message');
     }
 
+    // Match Claude Code CLI's /rewind: "Restore the code and/or conversation
+    // to the point *before* this prompt". The target user message and
+    // everything after it is removed; the user message's text is returned so
+    // the renderer can repopulate the composer for an immediate re-send.
     const restoredInput = targetMessage.content.content;
     const deletedMessages = messages.slice(targetIndex);
     const deletedMessageIds = deletedMessages.map((message) => message.id);
 
     resetMessageCacheForRewrite(id);
-    await this.repo.deleteMessages(deletedMessageIds);
+    if (deletedMessageIds.length > 0) {
+      await this.repo.deleteMessages(deletedMessageIds);
+    }
 
     const nextExtra = {
       ...conversation.extra,
@@ -174,9 +176,6 @@ export class ConversationServiceImpl implements IConversationService {
     const conversation = await this.repo.getConversation(id);
     if (!conversation) {
       throw new Error('Conversation not found');
-    }
-    if (conversation.type !== 'acp') {
-      throw new Error('Clear is currently only supported for ACP conversations');
     }
 
     const { data: messages } = await this.repo.getMessages(id, 0, 10000, 'ASC');

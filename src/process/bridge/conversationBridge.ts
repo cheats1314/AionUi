@@ -491,15 +491,33 @@ export function initConversationBridge(
     }
   });
 
+  // Rewind and clear both kill the worker and replace the underlying ACP
+  // session. The worker manager's kill() is fire-and-forget — the child
+  // process gets a 500ms grace window before super.kill() forces it down. If
+  // we resolve the IPC immediately, a follow-up sendMessage races the
+  // shutdown and the freshly spawned ACP child can crash with
+  // `Cannot read properties of null (reading 'createSession')`. Wait until
+  // the grace period has elapsed (and a hair more for the new child to be
+  // spawnable) before signalling success.
+  const TASK_RESET_SETTLE_MS = 800;
+  const settleAfterTaskReset = (conversation_id: string): Promise<void> => {
+    if (!workerTaskManager.getTask(conversation_id)) return Promise.resolve();
+    return new Promise((resolve) => setTimeout(resolve, TASK_RESET_SETTLE_MS));
+  };
+
   ipcBridge.conversation.rollbackToMessage.provider(async ({ conversation_id, target_message_id }) => {
     try {
-      const task = workerTaskManager.getTask(conversation_id);
-      if (task) {
+      const taskWasAlive = Boolean(workerTaskManager.getTask(conversation_id));
+      if (taskWasAlive) {
         workerTaskManager.kill(conversation_id);
       }
 
       resetMessageCacheForRewrite(conversation_id);
       const result = await conversationService.rollbackConversationToUserMessage(conversation_id, target_message_id);
+
+      if (taskWasAlive) {
+        await settleAfterTaskReset(conversation_id);
+      }
 
       const conversation = await conversationService.getConversation(conversation_id);
       if (conversation) {
@@ -522,13 +540,17 @@ export function initConversationBridge(
 
   ipcBridge.conversation.clearMessages.provider(async ({ conversation_id }) => {
     try {
-      const task = workerTaskManager.getTask(conversation_id);
-      if (task) {
+      const taskWasAlive = Boolean(workerTaskManager.getTask(conversation_id));
+      if (taskWasAlive) {
         workerTaskManager.kill(conversation_id);
       }
 
       resetMessageCacheForRewrite(conversation_id);
       const result = await conversationService.clearAllMessages(conversation_id);
+
+      if (taskWasAlive) {
+        await settleAfterTaskReset(conversation_id);
+      }
 
       const conversation = await conversationService.getConversation(conversation_id);
       if (conversation) {

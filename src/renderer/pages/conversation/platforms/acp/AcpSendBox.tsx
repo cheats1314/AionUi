@@ -320,11 +320,13 @@ Please check your local CLI tool authentication status`,
         resetConversationState();
         resetActiveExecution('external-reset');
         await reloadMessageListFromDatabase();
+        // Repopulate the composer with the rewound prompt so the user can
+        // edit and resend (matches the Claude Code CLI flow where /rewind
+        // clears the turn and surfaces its text for re-editing).
         const restoredInput = result.data?.restoredInput ?? '';
         setContent(restoredInput);
         emitter.emit('sendbox.focus');
         emitter.emit('chat.history.refresh');
-        return restoredInput;
       } finally {
         setRewindPending(false);
       }
@@ -343,17 +345,12 @@ Please check your local CLI tool authentication status`,
   const onSendHandler = async (message: string) => {
     const trimmedMessage = message.trim();
 
-    // Treat /undo and /rewind as universal aliases regardless of backend so
-    // users with either Claude Code CLI or Codex CLI muscle memory hit the
-    // same flow. Codex defaults to "undo last turn", Claude defaults to the
-    // turn picker; either alias still works on either backend.
+    // /undo is a pure alias of /rewind. Both open the multi-turn picker
+    // regardless of which agent is running so users keep one mental model
+    // when switching between Claude Code and Codex.
     if (trimmedMessage === '/undo' || trimmedMessage === '/rewind') {
       if (rewindCandidates.length === 0) {
         Message.warning(t('chat.rewind.noTurn', { defaultValue: 'There is no previous turn to rewind.' }));
-        return;
-      }
-      if (backend === 'codex' && trimmedMessage === '/undo') {
-        await executeRollback(rewindCandidates[0].id);
         return;
       }
       setRewindActiveIndex(0);
@@ -438,12 +435,6 @@ Please check your local CLI tool authentication status`,
           Message.warning(t('chat.rewind.noTurn', { defaultValue: 'There is no previous turn to rewind.' }));
           return;
         }
-        // Codex's /undo bypasses the picker (CLI parity: it just undoes the
-        // last turn). Anything else opens the multi-turn picker.
-        if (backend === 'codex' && name === 'undo') {
-          void executeRollback(rewindCandidates[0].id);
-          return;
-        }
         setRewindActiveIndex(0);
         setRewindSelectionOpen(true);
         return;
@@ -456,7 +447,7 @@ Please check your local CLI tool authentication status`,
 
       onSlashBuiltinCommand?.(name);
     },
-    [backend, executeClear, executeRollback, onSlashBuiltinCommand, rewindCandidates, t]
+    [executeClear, onSlashBuiltinCommand, rewindCandidates, t]
   );
 
   useAddEventListener('acp.selected.file', setAtPath);
@@ -468,7 +459,7 @@ Please check your local CLI tool authentication status`,
   });
 
   useEffect(() => {
-    if (!rewindSelectionOpen || backend !== 'claude' || rewindCandidates.length === 0) {
+    if (!rewindSelectionOpen || rewindCandidates.length === 0) {
       return;
     }
 
@@ -551,7 +542,7 @@ Please check your local CLI tool authentication status`,
         onClear={clear}
       />
       <ThoughtDisplay running={aiProcessing && !hasThinkingMessage} onStop={handleStop} />
-      {rewindSelectionOpen && backend === 'claude' && (
+      {rewindSelectionOpen && (
         <div className='mb-8px rounded-12px border border-solid border-[var(--color-border-2)] bg-[var(--color-bg-1)] p-6px shadow-sm'>
           <div className='flex items-center justify-between gap-8px px-8px py-6px'>
             <div>
@@ -702,35 +693,27 @@ Please check your local CLI tool authentication status`,
           </>
         }
         onSend={onSendHandler}
-        slashCommands={(() => {
-          // Surface /rewind and /undo as aliases on both backends so CLI users
-          // with either muscle memory can find them via the slash menu.
-          const rewindAliases =
-            backend === 'claude' || backend === 'codex'
-              ? [
-                  {
-                    name: 'rewind',
-                    description: t('chat.rewind.commandDescription', {
-                      defaultValue: 'Pick a previous turn and rewind the conversation',
-                    }),
-                    kind: 'builtin' as const,
-                    source: 'builtin' as const,
-                  },
-                  {
-                    name: 'undo',
-                    description:
-                      backend === 'codex'
-                        ? t('chat.rewind.undoDescription', { defaultValue: 'Undo the last turn' })
-                        : t('chat.rewind.undoAliasDescription', {
-                            defaultValue: 'Alias of /rewind — pick a previous turn to undo',
-                          }),
-                    kind: 'builtin' as const,
-                    source: 'builtin' as const,
-                  },
-                ]
-              : [];
-          return [...rewindAliases, ...slashCommands];
-        })()}
+        slashCommands={[
+          // /rewind and /undo are universal aliases that always open the
+          // turn picker regardless of which ACP agent is running.
+          {
+            name: 'rewind',
+            description: t('chat.rewind.commandDescription', {
+              defaultValue: 'Pick a previous turn and rewind the conversation',
+            }),
+            kind: 'builtin' as const,
+            source: 'builtin' as const,
+          },
+          {
+            name: 'undo',
+            description: t('chat.rewind.undoAliasDescription', {
+              defaultValue: 'Alias of /rewind — pick a previous turn to undo',
+            }),
+            kind: 'builtin' as const,
+            source: 'builtin' as const,
+          },
+          ...slashCommands,
+        ]}
         onSlashBuiltinCommand={handleBuiltinSlashCommand}
         allowSendWhileLoading
         compactActions={!!teamId}
