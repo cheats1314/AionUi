@@ -39,6 +39,7 @@ function makeRepo(overrides: Partial<IConversationRepository> = {}): IConversati
     updateConversation: vi.fn(),
     deleteConversation: vi.fn(),
     getMessages: vi.fn(() => ({ data: [], total: 0, hasMore: false })),
+    deleteMessages: vi.fn(async () => 0),
     insertMessage: vi.fn(),
     getUserConversations: vi.fn(() => ({ data: [], total: 0, hasMore: false })),
     listAllConversations: vi.fn(() => []),
@@ -490,5 +491,75 @@ describe('ConversationServiceImpl.getConversationsByCronJob', () => {
 
     expect(repo.getConversationsByCronJob).toHaveBeenCalledWith('job-1');
     expect(result).toEqual(conversations);
+  });
+});
+
+describe('ConversationServiceImpl.clearAllMessages', () => {
+  it('throws when conversation is missing', async () => {
+    const repo = makeRepo({ getConversation: vi.fn(async () => undefined) });
+    const svc = new ConversationServiceImpl(repo);
+    await expect(svc.clearAllMessages('missing')).rejects.toThrow(/Conversation not found/);
+  });
+
+  it('rejects non-ACP conversations to keep parity with rewind support', async () => {
+    const repo = makeRepo({
+      getConversation: vi.fn(async () => makeConversation({ id: 'c1', type: 'gemini' })),
+    });
+    const svc = new ConversationServiceImpl(repo);
+    await expect(svc.clearAllMessages('c1')).rejects.toThrow(/ACP/);
+  });
+
+  it('deletes all messages and resets the ACP session extras', async () => {
+    const conversation = makeConversation({
+      id: 'c1',
+      type: 'acp' as TChatConversation['type'],
+      extra: { acpSessionId: 'session-1', lastTokenUsage: 42 } as TChatConversation['extra'],
+    });
+    const repo = makeRepo({
+      getConversation: vi.fn(async () => conversation),
+      getMessages: vi.fn(async () => ({
+        data: [{ id: 'm1' } as any, { id: 'm2' } as any, { id: 'm3' } as any],
+        total: 3,
+        hasMore: false,
+      })),
+      deleteMessages: vi.fn(async () => 3),
+      updateConversation: vi.fn(async () => undefined),
+    });
+    const svc = new ConversationServiceImpl(repo);
+
+    const result = await svc.clearAllMessages('c1');
+
+    expect(repo.deleteMessages).toHaveBeenCalledWith(['m1', 'm2', 'm3']);
+    expect(repo.updateConversation).toHaveBeenCalledWith(
+      'c1',
+      expect.objectContaining({
+        extra: expect.objectContaining({
+          acpSessionId: undefined,
+          lastTokenUsage: undefined,
+        }),
+      })
+    );
+    expect(result).toEqual({ deletedCount: 3 });
+  });
+
+  it('skips deleteMessages when there are no messages but still resets extras', async () => {
+    const conversation = makeConversation({
+      id: 'c1',
+      type: 'acp' as TChatConversation['type'],
+      extra: { acpSessionId: 'session-1' } as TChatConversation['extra'],
+    });
+    const repo = makeRepo({
+      getConversation: vi.fn(async () => conversation),
+      getMessages: vi.fn(async () => ({ data: [], total: 0, hasMore: false })),
+      deleteMessages: vi.fn(async () => 0),
+      updateConversation: vi.fn(async () => undefined),
+    });
+    const svc = new ConversationServiceImpl(repo);
+
+    const result = await svc.clearAllMessages('c1');
+
+    expect(repo.deleteMessages).not.toHaveBeenCalled();
+    expect(repo.updateConversation).toHaveBeenCalled();
+    expect(result.deletedCount).toBe(0);
   });
 });

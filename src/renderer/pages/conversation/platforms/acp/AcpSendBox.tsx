@@ -329,7 +329,15 @@ Please check your local CLI tool authentication status`,
         setRewindPending(false);
       }
     },
-    [clear, clearFiles, conversation_id, reloadMessageListFromDatabase, resetActiveExecution, resetConversationState, setContent]
+    [
+      clear,
+      clearFiles,
+      conversation_id,
+      reloadMessageListFromDatabase,
+      resetActiveExecution,
+      resetConversationState,
+      setContent,
+    ]
   );
 
   const onSendHandler = async (message: string) => {
@@ -396,6 +404,35 @@ Please check your local CLI tool authentication status`,
     onFilesSelected: appendSelectedFiles,
   });
 
+  const executeClear = useCallback(async () => {
+    const result = await ipcBridge.conversation.clearMessages.invoke({ conversation_id });
+    assertBridgeSuccess(result, 'Failed to clear conversation');
+
+    clearFiles();
+    emitter.emit('acp.selected.file.clear');
+    clear();
+    resetConversationState();
+    resetActiveExecution('external-reset');
+    await reloadMessageListFromDatabase();
+    setContent('');
+    emitter.emit('sendbox.focus');
+    emitter.emit('chat.history.refresh');
+    Message.success(
+      t('chat.clear.success', {
+        defaultValue: 'Conversation cleared',
+      })
+    );
+  }, [
+    clear,
+    clearFiles,
+    conversation_id,
+    reloadMessageListFromDatabase,
+    resetActiveExecution,
+    resetConversationState,
+    setContent,
+    t,
+  ]);
+
   const handleBuiltinSlashCommand = useCallback(
     (name: string) => {
       if (name === 'rewind' && backend === 'claude') {
@@ -408,9 +445,14 @@ Please check your local CLI tool authentication status`,
         return;
       }
 
+      if (name === 'clear') {
+        void executeClear();
+        return;
+      }
+
       onSlashBuiltinCommand?.(name);
     },
-    [backend, onSlashBuiltinCommand, rewindCandidates.length, t]
+    [backend, executeClear, onSlashBuiltinCommand, rewindCandidates.length, t]
   );
 
   useAddEventListener('acp.selected.file', setAtPath);
@@ -537,10 +579,8 @@ Please check your local CLI tool authentication status`,
                 disabled={rewindPending}
                 className='w-full text-left px-10px py-8px rounded-8px transition-all border disabled:cursor-not-allowed disabled:opacity-60'
                 style={{
-                  borderColor:
-                    index === rewindActiveIndex ? 'var(--color-border-2)' : 'transparent',
-                  background:
-                    index === rewindActiveIndex ? 'var(--color-fill-1)' : 'transparent',
+                  borderColor: index === rewindActiveIndex ? 'var(--color-border-2)' : 'transparent',
+                  background: index === rewindActiveIndex ? 'var(--color-fill-1)' : 'transparent',
                 }}
                 onMouseEnter={() => {
                   setRewindActiveIndex(index);
@@ -556,7 +596,9 @@ Please check your local CLI tool authentication status`,
                       {index === 0 ? '0. ' : index < 10 ? `${index}. ` : ''}
                       {candidate.title}
                     </div>
-                    <div className='text-13px font-medium text-t-primary truncate'>{candidate.description || candidate.input}</div>
+                    <div className='text-13px font-medium text-t-primary truncate'>
+                      {candidate.description || candidate.input}
+                    </div>
                     <div className='text-11px text-t-secondary mt-2px'>
                       {candidate.keepCount > 0
                         ? `${candidate.keepCount} earlier turn${candidate.keepCount > 1 ? 's' : ''} kept · ${candidate.discardCount} turn${candidate.discardCount > 1 ? 's' : ''} removed`

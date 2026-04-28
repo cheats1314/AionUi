@@ -520,6 +520,35 @@ export function initConversationBridge(
     }
   });
 
+  ipcBridge.conversation.clearMessages.provider(async ({ conversation_id }) => {
+    try {
+      const task = workerTaskManager.getTask(conversation_id);
+      if (task) {
+        workerTaskManager.kill(conversation_id);
+      }
+
+      resetMessageCacheForRewrite(conversation_id);
+      const result = await conversationService.clearAllMessages(conversation_id);
+
+      const conversation = await conversationService.getConversation(conversation_id);
+      if (conversation) {
+        emitConversationListChanged(conversation, 'updated');
+      }
+      await refreshTrayMenuSafely();
+
+      return {
+        success: true,
+        data: result,
+      };
+    } catch (error) {
+      console.error('[conversationBridge] Failed to clear conversation messages:', error);
+      return {
+        success: false,
+        msg: error instanceof Error ? error.message : String(error),
+      };
+    }
+  });
+
   // 通用 sendMessage 实现 - 统一调用 IAgentManager.sendMessage
   // Generic sendMessage - dispatches via IAgentManager.sendMessage interface
   ipcBridge.conversation.sendMessage.provider(async (params) => {

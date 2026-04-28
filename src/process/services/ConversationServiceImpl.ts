@@ -170,6 +170,40 @@ export class ConversationServiceImpl implements IConversationService {
     };
   }
 
+  async clearAllMessages(id: string): Promise<{ deletedCount: number }> {
+    const conversation = await this.repo.getConversation(id);
+    if (!conversation) {
+      throw new Error('Conversation not found');
+    }
+    if (conversation.type !== 'acp') {
+      throw new Error('Clear is currently only supported for ACP conversations');
+    }
+
+    const { data: messages } = await this.repo.getMessages(id, 0, 10000, 'ASC');
+    const messageIds = messages.map((message) => message.id);
+
+    resetMessageCacheForRewrite(id);
+    if (messageIds.length > 0) {
+      await this.repo.deleteMessages(messageIds);
+    }
+
+    const nextExtra = {
+      ...conversation.extra,
+      acpSessionId: undefined,
+      acpSessionConversationId: undefined,
+      acpSessionUpdatedAt: undefined,
+      lastTokenUsage: undefined,
+      lastContextLimit: undefined,
+    } as TChatConversation['extra'];
+
+    await this.repo.updateConversation(id, {
+      extra: nextExtra,
+      modifyTime: Date.now(),
+    } as Partial<TChatConversation>);
+
+    return { deletedCount: messageIds.length };
+  }
+
   async createConversation(params: CreateConversationParams): Promise<TChatConversation> {
     let conversation: TChatConversation;
 

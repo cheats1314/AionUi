@@ -430,6 +430,12 @@ const SendBox: React.FC<{
         source: 'builtin',
       });
       commands.push({
+        name: 'clear',
+        description: t('chat.clear.commandDescription', { defaultValue: 'Clear conversation messages' }),
+        kind: 'builtin',
+        source: 'builtin',
+      });
+      commands.push({
         name: 'copy',
         description: t('messages.copy', { defaultValue: 'Copy' }),
         kind: 'builtin',
