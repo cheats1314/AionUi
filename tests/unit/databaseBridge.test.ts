@@ -80,6 +80,33 @@ describe('databaseBridge', () => {
       expect(result).toEqual(msgs);
     });
 
+    it('logs timing diagnostics for slow history reads', async () => {
+      const info = vi.spyOn(console, 'info').mockImplementation(() => {});
+      const now = vi
+        .spyOn(performance, 'now')
+        .mockReturnValueOnce(0)
+        .mockReturnValueOnce(10)
+        .mockReturnValueOnce(640)
+        .mockReturnValueOnce(650);
+      const msgs: Partial<TMessage>[] = [{ id: 'm1', type: 'text' as any }];
+      vi.mocked(repo.getMessages).mockReturnValue({ data: msgs as TMessage[], total: 3, hasMore: true });
+
+      await handlers['getConversationMessages']({ conversation_id: 'c1', page: 1, pageSize: 50 });
+
+      expect(info).toHaveBeenCalledWith('[DatabaseBridge] Conversation messages loaded', {
+        conversationId: 'c1',
+        page: 1,
+        pageSize: 50,
+        messages: 1,
+        total: 3,
+        hasMore: true,
+        repoMs: 630,
+        totalMs: 650,
+      });
+      now.mockRestore();
+      info.mockRestore();
+    });
+
     it('returns empty array when repo throws', async () => {
       vi.mocked(repo.getMessages).mockImplementation(() => {
         throw new Error('db error');

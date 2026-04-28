@@ -10,13 +10,39 @@ import type { TChatConversation } from '@/common/config/storage';
 import { migrateConversationToDatabase } from './migrationUtils';
 import type { IConversationRepository } from '@process/services/database/IConversationRepository';
 
+const MESSAGE_HISTORY_SLOW_THRESHOLD_MS = 500;
+
+const getNow = () => (typeof performance !== 'undefined' ? performance.now() : Date.now());
+
+const shouldLogMessageHistoryLoad = (durationMs: number): boolean =>
+  durationMs >= MESSAGE_HISTORY_SLOW_THRESHOLD_MS || process.env.AIONUI_MESSAGE_LOAD_DEBUG === '1';
+
 export function initDatabaseBridge(repo: IConversationRepository): void {
   // Get conversation messages from database
   ipcBridge.database.getConversationMessages.provider(async (_params) => {
     const { conversation_id, page = 0, pageSize = 10000 } = _params ?? {};
+    const startedAt = getNow();
     try {
+      const repoStartedAt = getNow();
       const result = await repo.getMessages(conversation_id, page, pageSize);
-      return result.data;
+      const repoMs = getNow() - repoStartedAt;
+      const totalMs = getNow() - startedAt;
+      const messages = result.data ?? [];
+
+      if (shouldLogMessageHistoryLoad(totalMs)) {
+        console.info('[DatabaseBridge] Conversation messages loaded', {
+          conversationId: conversation_id,
+          page,
+          pageSize,
+          messages: messages.length,
+          total: result.total,
+          hasMore: result.hasMore,
+          repoMs: Math.round(repoMs),
+          totalMs: Math.round(totalMs),
+        });
+      }
+
+      return messages;
     } catch (error) {
       console.error('[DatabaseBridge] Error getting conversation messages:', error);
       return [];
