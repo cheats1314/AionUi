@@ -343,19 +343,17 @@ Please check your local CLI tool authentication status`,
   const onSendHandler = async (message: string) => {
     const trimmedMessage = message.trim();
 
-    if (backend === 'codex' && trimmedMessage === '/undo') {
-      const latestCandidate = rewindCandidates[0];
-      if (!latestCandidate) {
-        Message.warning(t('chat.rewind.noTurn', { defaultValue: 'There is no previous turn to undo.' }));
-        return;
-      }
-      await executeRollback(latestCandidate.id);
-      return;
-    }
-
-    if (backend === 'claude' && trimmedMessage === '/rewind') {
+    // Treat /undo and /rewind as universal aliases regardless of backend so
+    // users with either Claude Code CLI or Codex CLI muscle memory hit the
+    // same flow. Codex defaults to "undo last turn", Claude defaults to the
+    // turn picker; either alias still works on either backend.
+    if (trimmedMessage === '/undo' || trimmedMessage === '/rewind') {
       if (rewindCandidates.length === 0) {
         Message.warning(t('chat.rewind.noTurn', { defaultValue: 'There is no previous turn to rewind.' }));
+        return;
+      }
+      if (backend === 'codex' && trimmedMessage === '/undo') {
+        await executeRollback(rewindCandidates[0].id);
         return;
       }
       setRewindActiveIndex(0);
@@ -435,9 +433,15 @@ Please check your local CLI tool authentication status`,
 
   const handleBuiltinSlashCommand = useCallback(
     (name: string) => {
-      if (name === 'rewind' && backend === 'claude') {
+      if (name === 'rewind' || name === 'undo') {
         if (rewindCandidates.length === 0) {
           Message.warning(t('chat.rewind.noTurn', { defaultValue: 'There is no previous turn to rewind.' }));
+          return;
+        }
+        // Codex's /undo bypasses the picker (CLI parity: it just undoes the
+        // last turn). Anything else opens the multi-turn picker.
+        if (backend === 'codex' && name === 'undo') {
+          void executeRollback(rewindCandidates[0].id);
           return;
         }
         setRewindActiveIndex(0);
@@ -452,7 +456,7 @@ Please check your local CLI tool authentication status`,
 
       onSlashBuiltinCommand?.(name);
     },
-    [backend, executeClear, onSlashBuiltinCommand, rewindCandidates.length, t]
+    [backend, executeClear, executeRollback, onSlashBuiltinCommand, rewindCandidates, t]
   );
 
   useAddEventListener('acp.selected.file', setAtPath);
@@ -698,21 +702,35 @@ Please check your local CLI tool authentication status`,
           </>
         }
         onSend={onSendHandler}
-        slashCommands={
-          backend === 'claude'
-            ? [
-                {
-                  name: 'rewind',
-                  description: t('chat.rewind.commandDescription', {
-                    defaultValue: 'Pick a previous turn and rewind the conversation',
-                  }),
-                  kind: 'builtin',
-                  source: 'builtin',
-                },
-                ...slashCommands,
-              ]
-            : slashCommands
-        }
+        slashCommands={(() => {
+          // Surface /rewind and /undo as aliases on both backends so CLI users
+          // with either muscle memory can find them via the slash menu.
+          const rewindAliases =
+            backend === 'claude' || backend === 'codex'
+              ? [
+                  {
+                    name: 'rewind',
+                    description: t('chat.rewind.commandDescription', {
+                      defaultValue: 'Pick a previous turn and rewind the conversation',
+                    }),
+                    kind: 'builtin' as const,
+                    source: 'builtin' as const,
+                  },
+                  {
+                    name: 'undo',
+                    description:
+                      backend === 'codex'
+                        ? t('chat.rewind.undoDescription', { defaultValue: 'Undo the last turn' })
+                        : t('chat.rewind.undoAliasDescription', {
+                            defaultValue: 'Alias of /rewind — pick a previous turn to undo',
+                          }),
+                    kind: 'builtin' as const,
+                    source: 'builtin' as const,
+                  },
+                ]
+              : [];
+          return [...rewindAliases, ...slashCommands];
+        })()}
         onSlashBuiltinCommand={handleBuiltinSlashCommand}
         allowSendWhileLoading
         compactActions={!!teamId}
