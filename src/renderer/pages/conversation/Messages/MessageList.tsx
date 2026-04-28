@@ -8,7 +8,7 @@ import type { CodexToolCallUpdate, IMessageAcpToolCall, IMessageToolGroup, TMess
 import { useConversationContextSafe } from '@/renderer/hooks/context/ConversationContext';
 import { iconColors } from '@/renderer/styles/colors';
 import { CHAT_MESSAGE_JUMP_EVENT, type ChatMessageJumpDetail } from '@/renderer/utils/chat/chatMinimapEvents';
-import { Image } from '@arco-design/web-react';
+import { Button, Image } from '@arco-design/web-react';
 import { Down } from '@icon-park/react';
 import MessageAcpPermission from '@renderer/pages/conversation/Messages/acp/MessageAcpPermission';
 import MessageAcpToolCall from '@renderer/pages/conversation/Messages/acp/MessageAcpToolCall';
@@ -156,7 +156,14 @@ const MessageItem: React.FC<{ message: TMessage; highlighted?: boolean }> = Reac
     prev.highlighted === next.highlighted
 );
 
-const MessageList: React.FC<{ className?: string; emptySlot?: React.ReactNode }> = ({ emptySlot }) => {
+const MessageList: React.FC<{
+  className?: string;
+  emptySlot?: React.ReactNode;
+  isLoading?: boolean;
+  isRefreshing?: boolean;
+  loadingError?: Error | null;
+  onRetryLoad?: () => void;
+}> = ({ emptySlot, isLoading = false, isRefreshing = false, loadingError, onRetryLoad }) => {
   const list = useMessageList();
   const conversationContext = useConversationContextSafe();
   useAutoPreviewOfficeFiles(conversationContext);
@@ -356,6 +363,49 @@ const MessageList: React.FC<{ className?: string; emptySlot?: React.ReactNode }>
     return <MessageItem message={item as TMessage} key={(item as TMessage).id} highlighted={highlighted}></MessageItem>;
   };
 
+  if (processedList.length === 0 && isLoading) {
+    return (
+      <div
+        className='relative flex-1 h-full flex items-center justify-center px-20px'
+        data-testid='message-list-loading'
+      >
+        <div
+          className='w-full max-w-680px flex flex-col gap-14px'
+          aria-label={t('messages.loadingHistory', { defaultValue: 'Loading conversation history…' })}
+        >
+          {[0, 1, 2].map((item) => (
+            <div key={item} className='rounded-16px border border-solid border-[var(--color-border-2)] bg-1 p-14px'>
+              <div className='h-12px w-38% rounded-full bg-[var(--color-fill-3)] animate-pulse' />
+              <div className='mt-12px h-10px w-full rounded-full bg-[var(--color-fill-2)] animate-pulse' />
+              <div className='mt-8px h-10px w-72% rounded-full bg-[var(--color-fill-2)] animate-pulse' />
+            </div>
+          ))}
+          <div className='text-center text-12px text-t-secondary'>
+            {t('messages.loadingHistory', { defaultValue: 'Loading conversation history…' })}
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (processedList.length === 0 && loadingError) {
+    return (
+      <div className='relative flex-1 h-full flex items-center justify-center px-20px' data-testid='message-list-error'>
+        <div className='max-w-420px rounded-16px border border-solid border-[var(--color-border-2)] bg-1 p-18px text-center shadow-sm'>
+          <div className='text-14px font-medium text-t-primary'>
+            {t('messages.historyLoadFailed', { defaultValue: 'Could not load conversation history' })}
+          </div>
+          <div className='mt-6px text-12px text-t-secondary break-words'>{loadingError.message}</div>
+          {onRetryLoad && (
+            <Button className='mt-12px' size='small' type='primary' onClick={onRetryLoad}>
+              {t('common.retry', { defaultValue: 'Retry' })}
+            </Button>
+          )}
+        </div>
+      </div>
+    );
+  }
+
   if (processedList.length === 0 && emptySlot) {
     return <div className='relative flex-1 h-full flex items-center justify-center'>{emptySlot}</div>;
   }
@@ -385,6 +435,12 @@ const MessageList: React.FC<{ className?: string; emptySlot?: React.ReactNode }>
           />
         </ImagePreviewContext.Provider>
       </Image.PreviewGroup>
+
+      {isRefreshing && (
+        <div className='absolute top-12px left-50% z-20 -translate-x-50% rounded-full border border-solid border-[var(--color-border-2)] bg-1 px-12px py-5px text-12px text-t-secondary shadow-sm'>
+          {t('messages.refreshingHistory', { defaultValue: 'Refreshing history…' })}
+        </div>
+      )}
 
       {showScrollButton && (
         <>

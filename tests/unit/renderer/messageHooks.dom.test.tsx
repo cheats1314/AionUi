@@ -35,9 +35,24 @@ type TestMessage = {
 };
 
 const CacheProbe = ({ conversationId }: { conversationId: string }) => {
-  useMessageLstCache(conversationId);
+  const cacheState = useMessageLstCache(conversationId);
   const messages = useMessageList();
-  return <pre data-testid='messages'>{JSON.stringify(messages)}</pre>;
+  return (
+    <>
+      <pre data-testid='messages'>{JSON.stringify(messages)}</pre>
+      <pre data-testid='cache-state'>{JSON.stringify(cacheState)}</pre>
+    </>
+  );
+};
+
+const createDeferred = <T,>() => {
+  let resolve!: (value: T) => void;
+  let reject!: (error: unknown) => void;
+  const promise = new Promise<T>((res, rej) => {
+    resolve = res;
+    reject = rej;
+  });
+  return { promise, resolve, reject };
 };
 
 const MutationProbe = () => {
@@ -127,6 +142,90 @@ describe('message hooks cache merge', () => {
     const merged = JSON.parse(screen.getByTestId('messages').textContent ?? '[]') as TestMessage[];
 
     expect(merged.map((message) => message.id)).toEqual(['db-1', 'stream-1']);
+  });
+
+  it('reports loading while conversation history is still pending', async () => {
+    const deferred = createDeferred<TestMessage[]>();
+    mockGetConversationMessagesInvoke.mockReturnValue(deferred.promise);
+
+    render(
+      <MessageListProvider value={[]}>
+        <CacheProbe conversationId='conv-loading' />
+      </MessageListProvider>
+    );
+
+    expect(screen.getByTestId('cache-state').textContent).toContain('"isLoading":true');
+    expect(screen.getByTestId('messages').textContent).toBe('[]');
+
+    deferred.resolve([
+      {
+        id: 'db-loading-1',
+        msg_id: 'db-loading-1',
+        conversation_id: 'conv-loading',
+        type: 'text',
+        content: { content: 'loaded after delay' },
+      },
+    ]);
+
+    await waitFor(() => {
+      expect(screen.getByTestId('messages').textContent).toContain('loaded after delay');
+      expect(screen.getByTestId('cache-state').textContent).toContain('"isLoading":false');
+    });
+  });
+
+  it('shows cached conversation messages immediately while refreshing in the background', async () => {
+    mockGetConversationMessagesInvoke.mockResolvedValueOnce([
+      {
+        id: 'db-cached-1',
+        msg_id: 'db-cached-1',
+        conversation_id: 'conv-cached',
+        type: 'text',
+        content: { content: 'cached message' },
+      },
+    ]);
+
+    const firstRender = render(
+      <MessageListProvider value={[]}>
+        <CacheProbe conversationId='conv-cached' />
+      </MessageListProvider>
+    );
+
+    await waitFor(() => {
+      expect(screen.getByTestId('messages').textContent).toContain('cached message');
+    });
+
+    firstRender.unmount();
+
+    const deferred = createDeferred<TestMessage[]>();
+    mockGetConversationMessagesInvoke.mockReturnValueOnce(deferred.promise);
+
+    render(
+      <MessageListProvider value={[]}>
+        <CacheProbe conversationId='conv-cached' />
+      </MessageListProvider>
+    );
+
+    await waitFor(() => {
+      expect(screen.getByTestId('messages').textContent).toContain('cached message');
+      expect(screen.getByTestId('cache-state').textContent).toContain('"isRefreshing":true');
+    });
+    expect(screen.getByTestId('cache-state').textContent).toContain('"isLoading":false');
+
+    deferred.resolve([
+      {
+        id: 'db-cached-2',
+        msg_id: 'db-cached-2',
+        conversation_id: 'conv-cached',
+        type: 'text',
+        content: { content: 'refreshed message' },
+      },
+    ]);
+
+    await waitFor(() => {
+      expect(screen.getByTestId('messages').textContent).toContain('refreshed message');
+      expect(screen.getByTestId('messages').textContent).not.toContain('cached message');
+      expect(screen.getByTestId('cache-state').textContent).toContain('"isRefreshing":false');
+    });
   });
 
   it('adds optimistic messages and removes them by msg id', async () => {
