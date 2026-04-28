@@ -449,8 +449,8 @@ Please check your local CLI tool authentication status`,
         return;
       }
 
-      if (/^[1-9]$/.test(event.key)) {
-        const selectedIndex = Number(event.key) - 1;
+      if (/^[0-9]$/.test(event.key)) {
+        const selectedIndex = event.key === '0' ? 0 : Number(event.key) - 1;
         const selectedCandidate = rewindCandidates[selectedIndex];
         if (!selectedCandidate) {
           return;
@@ -553,7 +553,7 @@ Please check your local CLI tool authentication status`,
                 <div className='flex items-center justify-between gap-8px'>
                   <div className='min-w-0'>
                     <div className='text-12px font-medium text-t-secondary'>
-                      {index < 9 ? `${index + 1}. ` : ''}
+                      {index === 0 ? '0. ' : index < 10 ? `${index}. ` : ''}
                       {candidate.title}
                     </div>
                     <div className='text-13px font-medium text-t-primary truncate'>{candidate.description || candidate.input}</div>

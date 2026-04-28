@@ -863,6 +863,45 @@ describe('platform send box queue integration', () => {
     });
   });
 
+  it('supports 0 as a shortcut for rewinding the most recent turn', async () => {
+    mockSendboxMessage = '/rewind';
+    mockUseMessageList.mockReturnValue([
+      {
+        id: 'msg-user-1',
+        msg_id: 'msg-user-1',
+        conversation_id: 'conv-acp',
+        type: 'text',
+        position: 'right',
+        content: { content: 'First prompt to rewind' },
+      },
+      {
+        id: 'msg-user-2',
+        msg_id: 'msg-user-2',
+        conversation_id: 'conv-acp',
+        type: 'text',
+        position: 'right',
+        content: { content: 'Second prompt to rewind' },
+      },
+    ]);
+
+    render(<AcpSendBox conversation_id='conv-acp' backend='claude' />);
+
+    fireEvent.click(screen.getByRole('button', { name: 'trigger-send' }));
+
+    await waitFor(() => {
+      expect(screen.getByText(/Choose a turn to rewind to/i)).toBeInTheDocument();
+    });
+
+    fireEvent.keyDown(window, { key: '0' });
+
+    await waitFor(() => {
+      expect(mockConversationRollbackInvoke).toHaveBeenCalledWith({
+        conversation_id: 'conv-acp',
+        target_message_id: 'msg-user-2',
+      });
+    });
+  });
+
   it('uses the shared rollback flow for Codex /undo', async () => {
     mockSendboxMessage = '/undo';
     mockUseMessageList.mockReturnValue([
