@@ -484,6 +484,7 @@ describe('SendBox queue and interaction behaviors', () => {
 
     expect(slashControllerArgs?.commands.map((command) => command.name)).toEqual([
       'open',
+      'help',
       'model',
       'clear',
       'copy',

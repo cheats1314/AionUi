@@ -22,7 +22,7 @@ import type { FileOrFolderItem } from '@/renderer/utils/file/fileTypes';
 import { filterWorkspaceMentionItems } from '@/renderer/utils/file/workspaceMentions';
 import { copyText } from '@/renderer/utils/ui/clipboard';
 import { blurActiveElement, shouldBlockMobileInputFocus } from '@/renderer/utils/ui/focus';
-import { Button, Input, Message, Tag } from '@arco-design/web-react';
+import { Button, Input, Message, Modal, Tag } from '@arco-design/web-react';
 import { ArrowUp, CloseSmall, Quote } from '@icon-park/react';
 import type { SlashCommandItem } from '@/common/chat/slash/types';
 import { theme } from '@office-ai/platform';
@@ -424,6 +424,12 @@ const SendBox: React.FC<{
     }
     if (conversationContext?.conversationId) {
       commands.push({
+        name: 'help',
+        description: t('chat.help.commandDescription', { defaultValue: 'Show available commands' }),
+        kind: 'builtin',
+        source: 'builtin',
+      });
+      commands.push({
         name: 'model',
         description: t('conversation.model.commandDescription', { defaultValue: 'Open model selector' }),
         kind: 'builtin',
@@ -486,6 +492,25 @@ const SendBox: React.FC<{
       } else if (name === 'model') {
         const modelButton = containerRef.current?.querySelector<HTMLButtonElement>('.sendbox-model-btn');
         modelButton?.click();
+      } else if (name === 'help') {
+        // Show every command currently available in this conversation so users
+        // who reach for `/help` (like in Claude Code CLI) get an inline list
+        // they can scan without losing context.
+        Modal.info({
+          title: t('chat.help.modalTitle', { defaultValue: 'Available commands' }),
+          icon: null,
+          okText: t('chat.help.dismiss', { defaultValue: 'Got it' }),
+          content: (
+            <div className='flex flex-col gap-8px'>
+              {mergedSlashCommands.map((command) => (
+                <div key={command.name} className='flex gap-12px text-13px leading-snug'>
+                  <code className='shrink-0 font-mono text-t-primary'>/{command.name}</code>
+                  <span className='min-w-0 text-t-secondary'>{command.description ?? ''}</span>
+                </div>
+              ))}
+            </div>
+          ),
+        });
       } else {
         onSlashBuiltinCommand?.(name);
       }
