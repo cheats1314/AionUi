@@ -424,6 +424,12 @@ const SendBox: React.FC<{
     }
     if (conversationContext?.conversationId) {
       commands.push({
+        name: 'model',
+        description: t('conversation.model.commandDescription', { defaultValue: 'Open model selector' }),
+        kind: 'builtin',
+        source: 'builtin',
+      });
+      commands.push({
         name: 'copy',
         description: t('messages.copy', { defaultValue: 'Copy' }),
         kind: 'builtin',
@@ -471,6 +477,9 @@ const SendBox: React.FC<{
         }
       } else if (name === 'export') {
         void conversationExport.openExportFlow();
+      } else if (name === 'model') {
+        const modelButton = containerRef.current?.querySelector<HTMLButtonElement>('.sendbox-model-btn');
+        modelButton?.click();
       } else {
         onSlashBuiltinCommand?.(name);
       }
