@@ -95,6 +95,7 @@ const MutationProbe = ({ conversationId = 'conv-1' }: { conversationId?: string 
 describe('message hooks cache merge', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    localStorage.clear();
   });
 
   it('keeps same-conversation streaming messages while filtering out messages from the previous conversation', async () => {
@@ -171,6 +172,40 @@ describe('message hooks cache merge', () => {
       expect(screen.getByTestId('messages').textContent).toContain('loaded after delay');
       expect(screen.getByTestId('cache-state').textContent).toContain('"isLoading":false');
     });
+  });
+
+  it('logs history load payload size when message load debug is enabled', async () => {
+    localStorage.setItem('aionui:message-load-debug', '1');
+    const info = vi.spyOn(console, 'info').mockImplementation(() => {});
+    const dbMessages: TestMessage[] = [
+      {
+        id: 'db-debug-1',
+        msg_id: 'db-debug-1',
+        conversation_id: 'conv-debug',
+        type: 'text',
+        content: { content: 'debug payload' },
+      },
+    ];
+    const payloadBytes = new TextEncoder().encode(JSON.stringify(dbMessages)).length;
+    mockGetConversationMessagesInvoke.mockResolvedValueOnce(dbMessages);
+
+    render(
+      <MessageListProvider value={[]}>
+        <CacheProbe conversationId='conv-debug' />
+      </MessageListProvider>
+    );
+
+    await waitFor(() => {
+      expect(info).toHaveBeenCalledWith('[MessageLoad] conversation history loaded', {
+        conversationId: 'conv-debug',
+        cached: false,
+        messages: 1,
+        payloadBytes,
+        dbMs: expect.any(Number),
+        totalMs: expect.any(Number),
+      });
+    });
+    info.mockRestore();
   });
 
   it('shows cached conversation messages immediately while refreshing in the background', async () => {

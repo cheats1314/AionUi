@@ -89,6 +89,7 @@ describe('databaseBridge', () => {
         .mockReturnValueOnce(640)
         .mockReturnValueOnce(650);
       const msgs: Partial<TMessage>[] = [{ id: 'm1', type: 'text' as any }];
+      const payloadBytes = new TextEncoder().encode(JSON.stringify(msgs)).length;
       vi.mocked(repo.getMessages).mockReturnValue({ data: msgs as TMessage[], total: 3, hasMore: true });
 
       await handlers['getConversationMessages']({ conversation_id: 'c1', page: 1, pageSize: 50 });
@@ -100,6 +101,7 @@ describe('databaseBridge', () => {
         messages: 1,
         total: 3,
         hasMore: true,
+        payloadBytes,
         repoMs: 630,
         totalMs: 650,
       });

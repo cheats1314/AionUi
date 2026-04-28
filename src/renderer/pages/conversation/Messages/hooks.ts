@@ -41,6 +41,14 @@ const shouldLogMessageLoad = (durationMs: number): boolean => {
   }
 };
 
+const getPayloadBytes = (value: unknown): number | undefined => {
+  try {
+    return new TextEncoder().encode(JSON.stringify(value)).length;
+  } catch {
+    return undefined;
+  }
+};
+
 const rememberConversationMessages = (conversationId: string, messages: TMessage[]) => {
   if (!conversationId) return;
   messageHistoryCache.delete(conversationId);
@@ -565,6 +573,7 @@ export const useMessageLstCache = (key: string): MessageListCacheState => {
           conversationId: key,
           cached: hasCachedMessages,
           messages: nextMessages.length,
+          payloadBytes: getPayloadBytes(nextMessages),
           dbMs: Math.round(dbReturnedAt - dbRequestStartedAt),
           totalMs: Math.round(totalMs),
         });

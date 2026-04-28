@@ -17,6 +17,14 @@ const getNow = () => (typeof performance !== 'undefined' ? performance.now() : D
 const shouldLogMessageHistoryLoad = (durationMs: number): boolean =>
   durationMs >= MESSAGE_HISTORY_SLOW_THRESHOLD_MS || process.env.AIONUI_MESSAGE_LOAD_DEBUG === '1';
 
+const getPayloadBytes = (value: unknown): number | undefined => {
+  try {
+    return new TextEncoder().encode(JSON.stringify(value)).length;
+  } catch {
+    return undefined;
+  }
+};
+
 export function initDatabaseBridge(repo: IConversationRepository): void {
   // Get conversation messages from database
   ipcBridge.database.getConversationMessages.provider(async (_params) => {
@@ -37,6 +45,7 @@ export function initDatabaseBridge(repo: IConversationRepository): void {
           messages: messages.length,
           total: result.total,
           hasMore: result.hasMore,
+          payloadBytes: getPayloadBytes(messages),
           repoMs: Math.round(repoMs),
           totalMs: Math.round(totalMs),
         });
