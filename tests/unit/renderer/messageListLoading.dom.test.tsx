@@ -1,7 +1,8 @@
 import React from 'react';
-import { fireEvent, render, screen } from '@testing-library/react';
-import { describe, expect, it, vi } from 'vitest';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { MemoryRouter } from 'react-router-dom';
+import type { TMessage } from '@/common/chat/chatLib';
 import { ConversationProvider } from '@/renderer/hooks/context/ConversationContext';
 import MessageList from '@/renderer/pages/conversation/Messages/MessageList';
 import { MessageListProvider } from '@/renderer/pages/conversation/Messages/hooks';
@@ -44,20 +45,29 @@ vi.mock('@/renderer/hooks/file/useAutoPreviewOfficeFiles', () => ({
   useAutoPreviewOfficeFiles: vi.fn(),
 }));
 
+vi.mock('@/renderer/pages/conversation/Messages/components/MessageText', () => ({
+  default: ({ message }: { message: { content: { content: string } } }) => <div>{message.content.content}</div>,
+}));
+
 vi.mock('react-i18next', () => ({
   useTranslation: () => ({
     t: (_key: string, options?: { defaultValue?: string }) => options?.defaultValue ?? _key,
   }),
 }));
 
-const renderMessageList = (ui: React.ReactElement) =>
+const renderMessageList = (ui: React.ReactElement, messages: TMessage[] = []) =>
   render(
     <MemoryRouter>
       <ConversationProvider value={{ conversationId: 'conv-1', type: 'acp' }}>
-        <MessageListProvider value={[]}>{ui}</MessageListProvider>
+        <MessageListProvider value={messages}>{ui}</MessageListProvider>
       </ConversationProvider>
     </MemoryRouter>
   );
+
+afterEach(() => {
+  vi.restoreAllMocks();
+  localStorage.clear();
+});
 
 describe('MessageList loading state', () => {
   it('renders a visible loading placeholder instead of an empty pane', () => {
@@ -78,5 +88,37 @@ describe('MessageList loading state', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
     expect(retry).toHaveBeenCalledTimes(1);
+  });
+
+  it('logs render timing diagnostics when message render debug is enabled', async () => {
+    localStorage.setItem('aionui:message-render-debug', '1');
+    const info = vi.spyOn(console, 'info').mockImplementation(() => {});
+    vi.spyOn(window, 'requestAnimationFrame').mockImplementation((callback: FrameRequestCallback) => {
+      callback(0);
+      return 1;
+    });
+    vi.spyOn(window, 'cancelAnimationFrame').mockImplementation(() => {});
+
+    renderMessageList(<MessageList />, [
+      {
+        id: 'msg-1',
+        msg_id: 'msg-1',
+        conversation_id: 'conv-1',
+        type: 'text',
+        position: 'left',
+        content: { content: 'rendered message' },
+      } as TMessage,
+    ]);
+
+    await waitFor(() => {
+      expect(info).toHaveBeenCalledWith('[MessageRender] conversation messages rendered', {
+        conversationId: 'conv-1',
+        rawMessages: 1,
+        renderedItems: 1,
+        processMs: expect.any(Number),
+        renderReadyMs: expect.any(Number),
+        totalMs: expect.any(Number),
+      });
+    });
   });
 });

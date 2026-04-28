@@ -84,6 +84,21 @@ const highlightStyle: React.CSSProperties = {
   borderRadius: '12px',
 };
 
+const MESSAGE_RENDER_SLOW_THRESHOLD_MS = 500;
+
+const getNow = () => (typeof performance !== 'undefined' ? performance.now() : Date.now());
+
+const shouldLogMessageRender = (durationMs: number): boolean => {
+  if (durationMs >= MESSAGE_RENDER_SLOW_THRESHOLD_MS) {
+    return true;
+  }
+  try {
+    return globalThis.localStorage?.getItem('aionui:message-render-debug') === '1';
+  } catch {
+    return false;
+  }
+};
+
 const getUnhandledMessageType = (_message: never): string => 'unknown';
 
 // Image preview context
@@ -175,7 +190,8 @@ const MessageList: React.FC<{
   const handledTargetKeyRef = useRef<string>('');
 
   // Pre-process message list to group Codex turn_diff messages
-  const processedList = useMemo(() => {
+  const processedListStats = useMemo(() => {
+    const startedAt = getNow();
     const result: Array<IMessageVO> = [];
     let diffsChanges: FileChangeInfo[] = [];
     let diffsSourceMessageIds: string[] = [];
@@ -251,8 +267,13 @@ const MessageList: React.FC<{
       diffsSourceMessageIds = [];
       result.push(message);
     }
-    return result;
+    return {
+      items: result,
+      processMs: getNow() - startedAt,
+      rawCount: list.length,
+    };
   }, [list]);
+  const processedList = processedListStats.items;
 
   // Use auto-scroll hook
   const {
@@ -268,6 +289,32 @@ const MessageList: React.FC<{
     messages: list,
     itemCount: processedList.length,
   });
+
+  useEffect(() => {
+    if (processedList.length === 0 || isLoading) return;
+    const renderStartedAt = getNow();
+    const frame = window.requestAnimationFrame(() => {
+      const renderReadyMs = getNow() - renderStartedAt;
+      const totalMs = processedListStats.processMs + renderReadyMs;
+      if (!shouldLogMessageRender(totalMs)) return;
+      console.info('[MessageRender] conversation messages rendered', {
+        conversationId: conversationContext?.conversationId,
+        rawMessages: processedListStats.rawCount,
+        renderedItems: processedList.length,
+        processMs: Math.round(processedListStats.processMs),
+        renderReadyMs: Math.round(renderReadyMs),
+        totalMs: Math.round(totalMs),
+      });
+    });
+
+    return () => window.cancelAnimationFrame(frame);
+  }, [
+    conversationContext?.conversationId,
+    isLoading,
+    processedList.length,
+    processedListStats.processMs,
+    processedListStats.rawCount,
+  ]);
 
   useEffect(() => {
     if (!targetMessageId || processedList.length === 0 || !virtuosoRef.current) {
