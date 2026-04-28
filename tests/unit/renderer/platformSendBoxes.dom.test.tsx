@@ -777,7 +777,7 @@ describe('platform send box queue integration', () => {
     fireEvent.click(screen.getByRole('button', { name: 'trigger-send' }));
 
     await waitFor(() => {
-      expect(screen.getByText(/Choose a turn to rewind to/i)).toBeInTheDocument();
+      expect(screen.getByText(/Restore the conversation to the point before/i)).toBeInTheDocument();
     });
 
     expect(mockAcpSendInvoke).not.toHaveBeenCalled();
@@ -810,9 +810,11 @@ describe('platform send box queue integration', () => {
     fireEvent.click(screen.getByRole('button', { name: 'trigger-send' }));
 
     await waitFor(() => {
-      expect(screen.getByText(/Choose a turn to rewind to/i)).toBeInTheDocument();
+      expect(screen.getByText(/Restore the conversation to the point before/i)).toBeInTheDocument();
     });
 
+    // Default active row is the newest turn (bottom of the list = msg-user-2).
+    // ArrowDown wraps to the top (msg-user-1) since the list is in time order.
     fireEvent.keyDown(window, { key: 'ArrowDown' });
     fireEvent.keyDown(window, { key: 'Enter' });
 
@@ -850,10 +852,11 @@ describe('platform send box queue integration', () => {
     fireEvent.click(screen.getByRole('button', { name: 'trigger-send' }));
 
     await waitFor(() => {
-      expect(screen.getByText(/Choose a turn to rewind to/i)).toBeInTheDocument();
+      expect(screen.getByText(/Restore the conversation to the point before/i)).toBeInTheDocument();
     });
 
-    fireEvent.keyDown(window, { key: '2' });
+    // 1 == "1 turn ago" — with two turns total, that's the older one.
+    fireEvent.keyDown(window, { key: '1' });
 
     await waitFor(() => {
       expect(mockConversationRollbackInvoke).toHaveBeenCalledWith({
@@ -889,7 +892,7 @@ describe('platform send box queue integration', () => {
     fireEvent.click(screen.getByRole('button', { name: 'trigger-send' }));
 
     await waitFor(() => {
-      expect(screen.getByText(/Choose a turn to rewind to/i)).toBeInTheDocument();
+      expect(screen.getByText(/Restore the conversation to the point before/i)).toBeInTheDocument();
     });
 
     fireEvent.keyDown(window, { key: '0' });
@@ -922,7 +925,7 @@ describe('platform send box queue integration', () => {
     // /undo and /rewind are pure aliases — both open the picker on every
     // backend rather than executing an immediate single-turn rollback.
     await waitFor(() => {
-      expect(screen.getByText(/Choose a turn to rewind to/i)).toBeInTheDocument();
+      expect(screen.getByText(/Restore the conversation to the point before/i)).toBeInTheDocument();
     });
 
     expect(mockConversationRollbackInvoke).not.toHaveBeenCalled();

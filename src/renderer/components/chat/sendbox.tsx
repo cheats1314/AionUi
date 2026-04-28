@@ -474,7 +474,14 @@ const SendBox: React.FC<{
     input,
     commands: mergedSlashCommands,
     onExecuteBuiltin: (name) => {
-      if (name === 'copy') {
+      // Platform-owned builtins (rewind/undo/clear) are forwarded to the
+      // platform sendbox unconditionally so the slash-menu Enter path always
+      // hits the same handler as the click path. Don't rely on the trailing
+      // `else` fallback for these — keep them explicit to avoid silent
+      // no-ops if the dispatch chain ever changes shape.
+      if (name === 'rewind' || name === 'undo' || name === 'clear') {
+        onSlashBuiltinCommand?.(name);
+      } else if (name === 'copy') {
         const lastAssistantText = getLastAssistantText(messageList, Boolean(loading));
         if (!lastAssistantText) {
           Message.warning(t('messages.copyLastOutput.empty'));

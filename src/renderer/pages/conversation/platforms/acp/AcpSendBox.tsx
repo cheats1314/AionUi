@@ -145,6 +145,7 @@ const AcpSendBox: React.FC<{
   const [rewindSelectionOpen, setRewindSelectionOpen] = React.useState(false);
   const [rewindPending, setRewindPending] = React.useState(false);
   const [rewindActiveIndex, setRewindActiveIndex] = React.useState(0);
+  const rewindRowRefs = React.useRef<Array<HTMLButtonElement | null>>([]);
 
   // Shared file handling logic
   const { handleFilesAdded, clearFiles } = useSendBoxFiles({
@@ -154,35 +155,59 @@ const AcpSendBox: React.FC<{
     setUploadFile,
   });
   const isBusy = running || aiProcessing;
-  const rewindCandidates = React.useMemo(
-    () =>
-      messageList
-        .filter(
-          (message): message is Extract<(typeof messageList)[number], { type: 'text' }> =>
-            message.conversation_id === conversation_id &&
-            message.type === 'text' &&
-            message.position === 'right' &&
-            !message.hidden &&
-            typeof message.content.content === 'string' &&
-            message.content.content.trim().length > 0
-        )
-        .map((message, index, items) => ({
-          id: message.id,
-          input: message.content.content,
-          title:
-            index === items.length - 1
-              ? t('chat.rewind.previousTurn', { defaultValue: 'Previous turn' })
-              : t('chat.rewind.turnOffset', {
-                  defaultValue: `${items.length - index - 1} turns ago`,
-                }),
-          description: message.content.content.replace(/\s+/g, ' ').trim().slice(0, 120),
-          discardCount: index + 1,
-          keepCount: items.length - index - 1,
-        }))
-        .slice(0, 12)
-        .reverse(),
-    [conversation_id, messageList]
-  );
+  // Rewind candidates are ordered oldest -> newest (top to bottom), matching
+  // the Claude Code CLI's /rewind picker. The most recent turn lives at the
+  // bottom of the list and is the default selection (rewinding to "before
+  // this prompt" mirrors CLI muscle memory: Enter without arrow keys
+  // == undo last turn).
+  const rewindCandidates = React.useMemo(() => {
+    const userTextMessages = messageList.filter(
+      (message): message is Extract<(typeof messageList)[number], { type: 'text' }> =>
+        message.conversation_id === conversation_id &&
+        message.type === 'text' &&
+        message.position === 'right' &&
+        !message.hidden &&
+        typeof message.content.content === 'string' &&
+        message.content.content.trim().length > 0
+    );
+    const totalTurns = userTextMessages.length;
+    return userTextMessages.map((message, index) => {
+      const turnsAfter = totalTurns - 1 - index;
+      const turnsBefore = index;
+      return {
+        id: message.id,
+        input: message.content.content,
+        title:
+          turnsAfter === 0
+            ? t('chat.rewind.mostRecentTurn', { defaultValue: 'Most recent turn' })
+            : t('chat.rewind.turnOffset', {
+                defaultValue: `${turnsAfter} turns ago`,
+              }),
+        description: message.content.content.replace(/\s+/g, ' ').trim().slice(0, 160),
+        discardCount: turnsAfter + 1,
+        keepCount: turnsBefore,
+      };
+    });
+  }, [conversation_id, messageList, t]);
+  const rewindCandidatesRef = useLatestRef(rewindCandidates);
+  const rewindActiveIndexRef = useLatestRef(rewindActiveIndex);
+  const rewindPendingRef = useLatestRef(rewindPending);
+
+  // Default the active row to the most recent turn (bottom of the picker)
+  // every time the picker opens or the candidate list changes shape. This
+  // mirrors Claude Code CLI: pressing Enter without arrows = undo last turn.
+  useEffect(() => {
+    if (!rewindSelectionOpen) return;
+    setRewindActiveIndex(Math.max(0, rewindCandidates.length - 1));
+  }, [rewindSelectionOpen, rewindCandidates.length]);
+
+  // Keep the active row in view while the user navigates with the keyboard
+  // — without this the highlight scrolls off the top/bottom on long lists.
+  useEffect(() => {
+    if (!rewindSelectionOpen) return;
+    const activeRow = rewindRowRefs.current[rewindActiveIndex];
+    activeRow?.scrollIntoView({ block: 'nearest' });
+  }, [rewindActiveIndex, rewindSelectionOpen]);
 
   // Register handler for adding text from preview panel to sendbox
   useEffect(() => {
@@ -459,61 +484,78 @@ Please check your local CLI tool authentication status`,
   });
 
   useEffect(() => {
-    if (!rewindSelectionOpen || rewindCandidates.length === 0) {
+    if (!rewindSelectionOpen) {
       return;
     }
 
+    // Read the latest state via refs so this listener is registered exactly
+    // once per "picker open" cycle instead of being torn down and rebound on
+    // every active-index/candidate change. Avoids closure staleness in the
+    // race window right after the slash menu hands off Enter to the picker.
     const handleKeyDown = (event: KeyboardEvent) => {
-      if (rewindPending) {
+      if (rewindPendingRef.current) {
+        return;
+      }
+      const candidates = rewindCandidatesRef.current;
+      if (!candidates || candidates.length === 0) {
         return;
       }
 
       if (event.key === 'Escape') {
         event.preventDefault();
+        event.stopPropagation();
         setRewindSelectionOpen(false);
         return;
       }
 
       if (event.key === 'ArrowDown') {
         event.preventDefault();
-        setRewindActiveIndex((prev) => (prev + 1) % rewindCandidates.length);
+        event.stopPropagation();
+        setRewindActiveIndex((prev) => (prev + 1) % candidates.length);
         return;
       }
 
       if (event.key === 'ArrowUp') {
         event.preventDefault();
-        setRewindActiveIndex((prev) => (prev - 1 + rewindCandidates.length) % rewindCandidates.length);
+        event.stopPropagation();
+        setRewindActiveIndex((prev) => (prev - 1 + candidates.length) % candidates.length);
         return;
       }
 
       if (/^[0-9]$/.test(event.key)) {
-        const selectedIndex = event.key === '0' ? 0 : Number(event.key) - 1;
-        const selectedCandidate = rewindCandidates[selectedIndex];
-        if (!selectedCandidate) {
+        // 0 == newest turn (last in list), 1..9 == 1..9 turns ago.
+        const turnsAgo = Number(event.key);
+        const selectedIndex = candidates.length - 1 - turnsAgo;
+        if (selectedIndex < 0 || selectedIndex >= candidates.length) {
           return;
         }
         event.preventDefault();
+        event.stopPropagation();
+        const selectedCandidate = candidates[selectedIndex];
         setRewindSelectionOpen(false);
         void executeRollback(selectedCandidate.id);
         return;
       }
 
       if (event.key === 'Enter' && !event.shiftKey) {
-        const activeCandidate = rewindCandidates[rewindActiveIndex];
+        const activeCandidate = candidates[rewindActiveIndexRef.current];
         if (!activeCandidate) {
           return;
         }
         event.preventDefault();
+        event.stopPropagation();
         setRewindSelectionOpen(false);
         void executeRollback(activeCandidate.id);
       }
     };
 
-    window.addEventListener('keydown', handleKeyDown);
+    // Capture phase so the picker's keys win over the textarea / slash menu
+    // handlers — once the picker is open, ↑↓Enter must talk to the picker.
+    window.addEventListener('keydown', handleKeyDown, { capture: true });
     return () => {
-      window.removeEventListener('keydown', handleKeyDown);
+      window.removeEventListener('keydown', handleKeyDown, { capture: true } as AddEventListenerOptions);
     };
-  }, [backend, executeRollback, rewindActiveIndex, rewindCandidates, rewindPending, rewindSelectionOpen]);
+  }, [executeRollback, rewindCandidatesRef, rewindActiveIndexRef, rewindPendingRef, rewindSelectionOpen]);
 
   // Stop conversation handler
   const handleStop = async (): Promise<void> => {
@@ -544,14 +586,14 @@ Please check your local CLI tool authentication status`,
       <ThoughtDisplay running={aiProcessing && !hasThinkingMessage} onStop={handleStop} />
       {rewindSelectionOpen && (
         <div className='mb-8px rounded-12px border border-solid border-[var(--color-border-2)] bg-[var(--color-bg-1)] p-6px shadow-sm'>
-          <div className='flex items-center justify-between gap-8px px-8px py-6px'>
-            <div>
+          <div className='flex items-start justify-between gap-8px px-10px pt-8px pb-4px'>
+            <div className='min-w-0'>
               <div className='text-13px font-semibold text-t-primary'>
-                {t('chat.rewind.title', { defaultValue: 'Rewind conversation' })}
+                {t('chat.rewind.title', { defaultValue: 'Rewind' })}
               </div>
               <div className='text-12px text-t-secondary'>
                 {t('chat.rewind.pickTurn', {
-                  defaultValue: 'Choose a turn to rewind to. That turn and everything after it will be removed.',
+                  defaultValue: 'Restore the conversation to the point before…',
                 })}
               </div>
             </div>
@@ -566,43 +608,54 @@ Please check your local CLI tool authentication status`,
               {t('common.cancel')}
             </Button>
           </div>
-          <div className='max-h-220px overflow-y-auto'>
-            {rewindCandidates.map((candidate, index) => (
-              <button
-                key={candidate.id}
-                type='button'
-                disabled={rewindPending}
-                className='w-full text-left px-10px py-8px rounded-8px transition-all border disabled:cursor-not-allowed disabled:opacity-60'
-                style={{
-                  borderColor: index === rewindActiveIndex ? 'var(--color-border-2)' : 'transparent',
-                  background: index === rewindActiveIndex ? 'var(--color-fill-1)' : 'transparent',
-                }}
-                onMouseEnter={() => {
-                  setRewindActiveIndex(index);
-                }}
-                onClick={() => {
-                  setRewindSelectionOpen(false);
-                  void executeRollback(candidate.id);
-                }}
-              >
-                <div className='flex items-center justify-between gap-8px'>
-                  <div className='min-w-0'>
-                    <div className='text-12px font-medium text-t-secondary'>
-                      {index === 0 ? '0. ' : index < 10 ? `${index}. ` : ''}
-                      {candidate.title}
-                    </div>
-                    <div className='text-13px font-medium text-t-primary truncate'>
-                      {candidate.description || candidate.input}
-                    </div>
-                    <div className='text-11px text-t-secondary mt-2px'>
-                      {candidate.keepCount > 0
-                        ? `${candidate.keepCount} earlier turn${candidate.keepCount > 1 ? 's' : ''} kept · ${candidate.discardCount} turn${candidate.discardCount > 1 ? 's' : ''} removed`
-                        : `This will rewind to the start and remove ${candidate.discardCount} turn${candidate.discardCount > 1 ? 's' : ''}`}
-                    </div>
+          <div className='max-h-260px overflow-y-auto py-2px'>
+            {rewindCandidates.map((candidate, index) => {
+              const turnsAgo = rewindCandidates.length - 1 - index;
+              const numericShortcut = turnsAgo <= 9 ? String(turnsAgo) : null;
+              const isActive = index === rewindActiveIndex;
+              return (
+                <button
+                  key={candidate.id}
+                  ref={(el) => {
+                    rewindRowRefs.current[index] = el;
+                  }}
+                  type='button'
+                  disabled={rewindPending}
+                  className='w-full text-left px-10px py-8px rounded-8px transition-colors disabled:cursor-not-allowed disabled:opacity-60'
+                  style={{
+                    background: isActive ? 'var(--color-fill-2)' : 'transparent',
+                  }}
+                  onMouseEnter={() => {
+                    setRewindActiveIndex(index);
+                  }}
+                  onClick={() => {
+                    setRewindSelectionOpen(false);
+                    void executeRollback(candidate.id);
+                  }}
+                >
+                  <div className='flex items-baseline gap-8px text-12px text-t-secondary'>
+                    <span className='shrink-0' style={{ visibility: isActive ? 'visible' : 'hidden' }}>
+                      ›
+                    </span>
+                    <span className='shrink-0 font-mono opacity-70'>{numericShortcut ?? ' '}</span>
+                    <span className='shrink-0'>{candidate.title}</span>
                   </div>
-                </div>
-              </button>
-            ))}
+                  <div className='ml-22px text-13px text-t-primary truncate'>
+                    {candidate.description || candidate.input}
+                  </div>
+                  <div className='ml-22px text-11px text-t-tertiary'>
+                    {candidate.keepCount > 0
+                      ? `${candidate.keepCount} earlier turn${candidate.keepCount > 1 ? 's' : ''} kept · ${candidate.discardCount} turn${candidate.discardCount > 1 ? 's' : ''} removed`
+                      : `Removes all ${candidate.discardCount} turn${candidate.discardCount > 1 ? 's' : ''} (rewinds to start)`}
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+          <div className='px-10px pt-4px pb-6px text-11px text-t-tertiary'>
+            {t('chat.rewind.footer', {
+              defaultValue: 'Enter to rewind · Esc to cancel · 0–9 jump · ↑↓ navigate',
+            })}
           </div>
         </div>
       )}
