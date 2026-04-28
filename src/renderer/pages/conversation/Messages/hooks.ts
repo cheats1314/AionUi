@@ -52,6 +52,11 @@ const rememberConversationMessages = (conversationId: string, messages: TMessage
   }
 };
 
+const rememberConversationMessagesFromList = (conversationId: string, messages: TMessage[]) => {
+  const conversationMessages = messages.filter((message) => message.conversation_id === conversationId);
+  rememberConversationMessages(conversationId, conversationMessages);
+};
+
 const mergeLoadedMessages = (
   conversationId: string,
   currentList: TMessage[],
@@ -376,8 +381,12 @@ export const useAddOrUpdateMessage = () => {
       // Get or build index for fast lookup
       const index = getOrBuildIndex(list);
       let newList = list;
+      const affectedConversationIds = new Set<string>();
 
       for (const item of pending) {
+        if (item.message.conversation_id) {
+          affectedConversationIds.add(item.message.conversation_id);
+        }
         if (item.add) {
           // 新增消息，更新索引
           // New message, update index
@@ -403,6 +412,9 @@ export const useAddOrUpdateMessage = () => {
         while (beforeUpdateMessageListStack.length) {
           newList = beforeUpdateMessageListStack.shift()!(newList);
         }
+      }
+      for (const conversationId of affectedConversationIds) {
+        rememberConversationMessagesFromList(conversationId, newList);
       }
       return newList;
     });
@@ -434,7 +446,19 @@ export const useRemoveMessageByMsgId = () => {
 
   return useCallback(
     (msgId: string) => {
-      update((list) => list.filter((message) => message.msg_id !== msgId));
+      update((list) => {
+        const removedConversationIds = new Set(
+          list
+            .filter((message) => message.msg_id === msgId)
+            .map((message) => message.conversation_id)
+            .filter(Boolean)
+        );
+        const nextList = list.filter((message) => message.msg_id !== msgId);
+        for (const conversationId of removedConversationIds) {
+          rememberConversationMessagesFromList(conversationId, nextList);
+        }
+        return nextList;
+      });
     },
     [update]
   );

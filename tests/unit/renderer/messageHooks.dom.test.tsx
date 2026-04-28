@@ -55,10 +55,10 @@ const createDeferred = <T,>() => {
   return { promise, resolve, reject };
 };
 
-const MutationProbe = () => {
+const MutationProbe = ({ conversationId = 'conv-1' }: { conversationId?: string }) => {
   const addOrUpdateMessage = useAddOrUpdateMessage();
   const removeMessageByMsgId = useRemoveMessageByMsgId();
-  const reloadMessageListFromDatabase = useReloadMessageListFromDatabase('conv-1');
+  const reloadMessageListFromDatabase = useReloadMessageListFromDatabase(conversationId);
   const messages = useMessageList();
 
   return (
@@ -70,7 +70,7 @@ const MutationProbe = () => {
             {
               id: 'msg-1',
               msg_id: 'msg-1',
-              conversation_id: 'conv-1',
+              conversation_id: conversationId,
               type: 'text',
               position: 'right',
               content: { content: 'queued message' },
@@ -225,6 +225,70 @@ describe('message hooks cache merge', () => {
       expect(screen.getByTestId('messages').textContent).toContain('refreshed message');
       expect(screen.getByTestId('messages').textContent).not.toContain('cached message');
       expect(screen.getByTestId('cache-state').textContent).toContain('"isRefreshing":false');
+    });
+  });
+
+  it('keeps locally updated messages in cache for immediate conversation returns', async () => {
+    mockGetConversationMessagesInvoke.mockResolvedValueOnce([
+      {
+        id: 'db-fresh-1',
+        msg_id: 'db-fresh-1',
+        conversation_id: 'conv-fresh-cache',
+        type: 'text',
+        content: { content: 'cached before local update' },
+      },
+    ]);
+
+    const firstRender = render(
+      <MessageListProvider value={[]}>
+        <CacheProbe conversationId='conv-fresh-cache' />
+      </MessageListProvider>
+    );
+
+    await waitFor(() => {
+      expect(screen.getByTestId('messages').textContent).toContain('cached before local update');
+    });
+
+    firstRender.unmount();
+
+    const mutationRender = render(
+      <MessageListProvider
+        value={[
+          {
+            id: 'db-fresh-1',
+            msg_id: 'db-fresh-1',
+            conversation_id: 'conv-fresh-cache',
+            type: 'text',
+            content: { content: 'cached before local update' },
+          },
+        ]}
+      >
+        <MutationProbe conversationId='conv-fresh-cache' />
+      </MessageListProvider>
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'add-message' }));
+
+    await waitFor(() => {
+      expect(screen.getByTestId('mutated-messages').textContent).toContain('queued message');
+    });
+
+    mutationRender.unmount();
+
+    const deferred = createDeferred<TestMessage[]>();
+    mockGetConversationMessagesInvoke.mockReturnValueOnce(deferred.promise);
+
+    render(
+      <MessageListProvider value={[]}>
+        <CacheProbe conversationId='conv-fresh-cache' />
+      </MessageListProvider>
+    );
+
+    await waitFor(() => {
+      const content = screen.getByTestId('messages').textContent ?? '';
+      expect(content).toContain('cached before local update');
+      expect(content).toContain('queued message');
+      expect(screen.getByTestId('cache-state').textContent).toContain('"isRefreshing":true');
     });
   });
 
