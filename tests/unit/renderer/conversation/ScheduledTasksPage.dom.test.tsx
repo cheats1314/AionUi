@@ -412,11 +412,26 @@ describe('ScheduledTasksPage', () => {
     const { default: ScheduledTasksPage } = await import('@renderer/pages/cron/ScheduledTasksPage');
     render(<ScheduledTasksPage />);
 
-    await waitFor(() => screen.getByText('Daily Summary'));
+    const jobCard = await screen.findByRole('button', { name: 'Open scheduled task Daily Summary' });
+    fireEvent.click(jobCard);
 
-    const jobCard = screen.getByText('Daily Summary').closest('div');
-    fireEvent.click(jobCard!);
+    expect(mockNavigate).toHaveBeenCalledWith('/scheduled/job-123');
+  });
 
+  it('should navigate to job detail from keyboard activation', async () => {
+    const job = createMockJob({ id: 'job-123' });
+    mockListJobs.mockResolvedValue([job]);
+
+    const { default: ScheduledTasksPage } = await import('@renderer/pages/cron/ScheduledTasksPage');
+    render(<ScheduledTasksPage />);
+
+    const jobCard = await screen.findByRole('button', { name: 'Open scheduled task Daily Summary' });
+
+    fireEvent.keyDown(jobCard, { key: 'Enter' });
+    expect(mockNavigate).toHaveBeenCalledWith('/scheduled/job-123');
+
+    mockNavigate.mockClear();
+    fireEvent.keyDown(jobCard, { key: ' ' });
     expect(mockNavigate).toHaveBeenCalledWith('/scheduled/job-123');
   });
 

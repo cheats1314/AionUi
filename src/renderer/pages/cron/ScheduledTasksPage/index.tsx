@@ -87,6 +87,15 @@ const ScheduledTasksPage: React.FC = () => {
     [pauseJob, resumeJob, t]
   );
 
+  const handleJobCardKeyDown = useCallback(
+    (event: React.KeyboardEvent<HTMLElement>, job: ICronJob) => {
+      if (event.key !== 'Enter' && event.key !== ' ') return;
+      event.preventDefault();
+      handleGoToDetail(job);
+    },
+    [handleGoToDetail]
+  );
+
   return (
     <div
       className={classNames(
@@ -179,11 +188,15 @@ const ScheduledTasksPage: React.FC = () => {
               return (
                 <div
                   key={job.id}
+                  role='button'
+                  tabIndex={0}
+                  aria-label={`Open scheduled task ${job.name}`}
                   className={classNames(
                     'group flex cursor-pointer flex-col border border-solid border-[var(--color-border-2)] bg-fill-1 transition-colors duration-200 hover:border-[var(--color-border-3)] hover:shadow-sm',
                     isMobile ? 'rounded-12px px-16px py-16px' : 'rounded-12px px-20px py-18px'
                   )}
                   onClick={() => handleGoToDetail(job)}
+                  onKeyDown={(event) => handleJobCardKeyDown(event, job)}
                 >
                   <div className='mb-12px flex items-center justify-between gap-8px'>
                     <span
@@ -245,7 +258,11 @@ const ScheduledTasksPage: React.FC = () => {
                       <span className='min-w-0 truncate'>{executionModeLabel}</span>
                     </div>
 
-                    <div className='shrink-0' onClick={(e) => e.stopPropagation()}>
+                    <div
+                      className='shrink-0'
+                      onClick={(e) => e.stopPropagation()}
+                      onKeyDown={(e) => e.stopPropagation()}
+                    >
                       {!isManualOnly && (
                         <Switch size='small' checked={job.enabled} onChange={() => handleToggleEnabled(job)} />
                       )}
