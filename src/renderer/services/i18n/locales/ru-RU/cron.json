@@ -104,7 +104,10 @@
       "workspaceHint": "[Optional: set a workspace folder for file operations]",
       "selectFolder": "[Select Folder]",
       "clearFolder": "[Clear]",
-      "model": "[Model]"
+      "model": "[Model]",
+      "customIntervalPrefix": "Every",
+      "customIntervalPlaceholder": "10",
+      "customIntervalInvalid": "Enter a valid interval for the selected unit"
     },
     "freq": {
       "manual": "Вручную",
@@ -114,12 +117,20 @@
       "weekly": "Еженедельно",
       "custom": "Пользовательский"
     },
+    "customIntervalUnit": {
+      "minutes": "minutes",
+      "hours": "hours",
+      "days": "days"
+    },
     "scheduleDesc": {
       "manual": "Вручную",
       "hourly": "Каждый час",
       "dailyAt": "Каждый день в {{time}}",
       "weekdaysAt": "По будням в {{time}}",
-      "weeklyAt": "Каждый {{day}} в {{time}}"
+      "weeklyAt": "Каждый {{day}} в {{time}}",
+      "everyMinutes": "Every {{value}} minutes",
+      "everyHours": "Every {{value}} hours",
+      "everyDays": "Every {{value}} days at 09:00"
     }
   },
   "trigger": {

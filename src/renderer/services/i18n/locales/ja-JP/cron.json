@@ -117,7 +117,10 @@
       "workspaceHint": "オプション：ファイル操作のワークスペースフォルダを設定",
       "selectFolder": "フォルダを選択",
       "clearFolder": "クリア",
-      "model": "モデル"
+      "model": "モデル",
+      "customIntervalPrefix": "毎",
+      "customIntervalPlaceholder": "10",
+      "customIntervalInvalid": "選択した単位に有効な間隔を入力してください"
     },
     "freq": {
       "manual": "手動",
@@ -127,12 +130,20 @@
       "weekly": "毎週",
       "custom": "カスタム"
     },
+    "customIntervalUnit": {
+      "minutes": "分",
+      "hours": "時間",
+      "days": "日"
+    },
     "scheduleDesc": {
       "manual": "手動",
       "hourly": "毎時実行",
       "dailyAt": "毎日 {{time}} に実行",
       "weekdaysAt": "平日 {{time}} に実行",
-      "weeklyAt": "毎週{{day}} {{time}} に実行"
+      "weeklyAt": "毎週{{day}} {{time}} に実行",
+      "everyMinutes": "{{value}} 分ごとに実行",
+      "everyHours": "{{value}} 時間ごとに実行",
+      "everyDays": "{{value}} 日ごと 09:00 に実行"
     }
   },
   "trigger": {

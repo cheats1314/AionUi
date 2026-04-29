@@ -103,7 +103,10 @@
       "workspaceHint": "Опціонально: встановіть папку робочої області для операцій з файлами",
       "selectFolder": "Вибрати папку",
       "clearFolder": "Очистити",
-      "model": "Модель"
+      "model": "Модель",
+      "customIntervalPrefix": "Every",
+      "customIntervalPlaceholder": "10",
+      "customIntervalInvalid": "Enter a valid interval for the selected unit"
     },
     "freq": {
       "manual": "Вручну",
@@ -113,12 +116,20 @@
       "weekly": "Щотижня",
       "custom": "Власний cron..."
     },
+    "customIntervalUnit": {
+      "minutes": "minutes",
+      "hours": "hours",
+      "days": "days"
+    },
     "scheduleDesc": {
       "manual": "Вручну",
       "hourly": "Щогодини",
       "dailyAt": "Щодня о {{time}}",
       "weekdaysAt": "У будні о {{time}}",
-      "weeklyAt": "Що{{day}} о {{time}}"
+      "weeklyAt": "Що{{day}} о {{time}}",
+      "everyMinutes": "Every {{value}} minutes",
+      "everyHours": "Every {{value}} hours",
+      "everyDays": "Every {{value}} days at 09:00"
     }
   },
   "trigger": {

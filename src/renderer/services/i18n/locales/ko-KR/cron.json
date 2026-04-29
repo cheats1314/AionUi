@@ -105,7 +105,10 @@
       "workspaceHint": "선택 사항: 파일 작업을 위한 워크스페이스 폴더 설정",
       "selectFolder": "폴더 선택",
       "clearFolder": "지우기",
-      "model": "모델"
+      "model": "모델",
+      "customIntervalPrefix": "매",
+      "customIntervalPlaceholder": "10",
+      "customIntervalInvalid": "선택한 단위에 맞는 유효한 간격을 입력하세요"
     },
     "freq": {
       "manual": "수동",
@@ -115,12 +118,20 @@
       "weekly": "매주",
       "custom": "사용자 지정"
     },
+    "customIntervalUnit": {
+      "minutes": "분",
+      "hours": "시간",
+      "days": "일"
+    },
     "scheduleDesc": {
       "manual": "수동",
       "hourly": "매시간 실행",
       "dailyAt": "매일 {{time}}에 실행",
       "weekdaysAt": "평일 {{time}}에 실행",
-      "weeklyAt": "매주 {{day}} {{time}}에 실행"
+      "weeklyAt": "매주 {{day}} {{time}}에 실행",
+      "everyMinutes": "{{value}}분마다 실행",
+      "everyHours": "{{value}}시간마다 실행",
+      "everyDays": "{{value}}일마다 09:00에 실행"
     }
   },
   "trigger": {

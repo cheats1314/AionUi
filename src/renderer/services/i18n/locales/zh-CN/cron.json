@@ -105,7 +105,10 @@
       "workspaceHint": "可选：设置文件操作的工作空间文件夹",
       "selectFolder": "选择文件夹",
       "clearFolder": "清除",
-      "model": "模型"
+      "model": "模型",
+      "customIntervalPrefix": "每",
+      "customIntervalPlaceholder": "10",
+      "customIntervalInvalid": "请输入符合所选单位的有效间隔"
     },
     "freq": {
       "manual": "手动触发",
@@ -115,12 +118,20 @@
       "weekly": "每周",
       "custom": "自定义"
     },
+    "customIntervalUnit": {
+      "minutes": "分钟",
+      "hours": "小时",
+      "days": "天"
+    },
     "scheduleDesc": {
       "manual": "手动触发",
       "hourly": "每小时执行",
       "dailyAt": "每天 {{time}} 执行",
       "weekdaysAt": "工作日 {{time}} 执行",
-      "weeklyAt": "每周{{day}} {{time}} 执行"
+      "weeklyAt": "每周{{day}} {{time}} 执行",
+      "everyMinutes": "每 {{value}} 分钟执行",
+      "everyHours": "每 {{value}} 小时执行",
+      "everyDays": "每 {{value}} 天 09:00 执行"
     }
   },
   "trigger": {
