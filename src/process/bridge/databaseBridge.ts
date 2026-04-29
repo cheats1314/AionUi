@@ -28,11 +28,11 @@ const getPayloadBytes = (value: unknown): number | undefined => {
 export function initDatabaseBridge(repo: IConversationRepository): void {
   // Get conversation messages from database
   ipcBridge.database.getConversationMessages.provider(async (_params) => {
-    const { conversation_id, page = 0, pageSize = 10000 } = _params ?? {};
+    const { conversation_id, page = 0, pageSize = 10000, order = 'ASC' } = _params ?? {};
     const startedAt = getNow();
     try {
       const repoStartedAt = getNow();
-      const result = await repo.getMessages(conversation_id, page, pageSize);
+      const result = await repo.getMessages(conversation_id, page, pageSize, order);
       const repoMs = getNow() - repoStartedAt;
       const totalMs = getNow() - startedAt;
       const messages = result.data ?? [];
@@ -42,6 +42,7 @@ export function initDatabaseBridge(repo: IConversationRepository): void {
           conversationId: conversation_id,
           page,
           pageSize,
+          order,
           messages: messages.length,
           total: result.total,
           hasMore: result.hasMore,

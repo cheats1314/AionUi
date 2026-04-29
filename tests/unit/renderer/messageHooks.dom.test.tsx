@@ -199,6 +199,7 @@ describe('message hooks cache merge', () => {
       expect(info).toHaveBeenCalledWith('[MessageLoad] conversation history loaded', {
         conversationId: 'conv-debug',
         cached: false,
+        partial: false,
         messages: 1,
         payloadBytes,
         dbMs: expect.any(Number),
@@ -206,6 +207,62 @@ describe('message hooks cache merge', () => {
       });
     });
     info.mockRestore();
+  });
+
+  it('loads the latest page first before refreshing long conversation history', async () => {
+    const latestDescMessages: TestMessage[] = Array.from({ length: 300 }, (_, index) => ({
+      id: `latest-${300 - index}`,
+      msg_id: `latest-${300 - index}`,
+      conversation_id: 'conv-long',
+      type: 'text',
+      content: { content: `latest ${300 - index}` },
+    }));
+    const fullDeferred = createDeferred<TestMessage[]>();
+    mockGetConversationMessagesInvoke
+      .mockResolvedValueOnce(latestDescMessages)
+      .mockReturnValueOnce(fullDeferred.promise);
+
+    render(
+      <MessageListProvider value={[]}>
+        <CacheProbe conversationId='conv-long' />
+      </MessageListProvider>
+    );
+
+    await waitFor(() => {
+      const messages = JSON.parse(screen.getByTestId('messages').textContent ?? '[]') as TestMessage[];
+      expect(messages).toHaveLength(300);
+      expect(messages[0].id).toBe('latest-1');
+      expect(messages[299].id).toBe('latest-300');
+      expect(screen.getByTestId('cache-state').textContent).toContain('"isRefreshing":true');
+    });
+    expect(mockGetConversationMessagesInvoke).toHaveBeenNthCalledWith(1, {
+      conversation_id: 'conv-long',
+      page: 0,
+      pageSize: 300,
+      order: 'DESC',
+    });
+    expect(mockGetConversationMessagesInvoke).toHaveBeenNthCalledWith(2, {
+      conversation_id: 'conv-long',
+      page: 0,
+      pageSize: 10000,
+      order: 'ASC',
+    });
+
+    fullDeferred.resolve([
+      ...latestDescMessages.slice().reverse(),
+      {
+        id: 'older-1',
+        msg_id: 'older-1',
+        conversation_id: 'conv-long',
+        type: 'text',
+        content: { content: 'older message' },
+      },
+    ]);
+
+    await waitFor(() => {
+      expect(screen.getByTestId('messages').textContent).toContain('older message');
+      expect(screen.getByTestId('cache-state').textContent).toContain('"isRefreshing":false');
+    });
   });
 
   it('shows cached conversation messages immediately while refreshing in the background', async () => {

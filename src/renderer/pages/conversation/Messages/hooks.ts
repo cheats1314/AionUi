@@ -17,6 +17,8 @@ const [useChatKey, ChatKeyProvider] = createContext('');
 const beforeUpdateMessageListStack: Array<(list: TMessage[]) => TMessage[]> = [];
 
 const MESSAGE_HISTORY_CACHE_LIMIT = 12;
+const MESSAGE_HISTORY_INITIAL_PAGE_SIZE = 300;
+const MESSAGE_HISTORY_FULL_PAGE_SIZE = 10000;
 const MESSAGE_LOAD_SLOW_THRESHOLD_MS = 500;
 const messageHistoryCache = new Map<string, TMessage[]>();
 
@@ -47,6 +49,11 @@ const getPayloadBytes = (value: unknown): number | undefined => {
   } catch {
     return undefined;
   }
+};
+
+const normalizeLoadedMessages = (messages: unknown, order: 'ASC' | 'DESC' = 'ASC'): TMessage[] => {
+  if (!Array.isArray(messages)) return [];
+  return order === 'DESC' ? [...messages].reverse() : messages;
 };
 
 const rememberConversationMessages = (conversationId: string, messages: TMessage[]) => {
@@ -495,7 +502,7 @@ export const useReloadMessageListFromDatabase = (conversationId?: string) => {
     const messages = await ipcBridge.database.getConversationMessages.invoke({
       conversation_id: conversationId,
       page: 0,
-      pageSize: 10000,
+      pageSize: MESSAGE_HISTORY_FULL_PAGE_SIZE,
     });
     const nextMessages = Array.isArray(messages) ? messages : [];
     rememberConversationMessages(conversationId, nextMessages);
@@ -541,14 +548,24 @@ export const useMessageLstCache = (key: string): MessageListCacheState => {
     });
 
     try {
-      const dbRequestStartedAt = getNow();
-      const messages = await ipcBridge.database.getConversationMessages.invoke({
-        conversation_id: key,
-        page: 0,
-        pageSize: 10000, // Load all messages (up to 10k per conversation)
-      });
-      const dbReturnedAt = getNow();
-      const nextMessages = Array.isArray(messages) ? messages : [];
+      const loadFromDatabase = async (pageSize: number, order: 'ASC' | 'DESC' = 'ASC') => {
+        const dbRequestStartedAt = getNow();
+        const messages = await ipcBridge.database.getConversationMessages.invoke({
+          conversation_id: key,
+          page: 0,
+          pageSize,
+          order,
+        });
+        return {
+          messages: normalizeLoadedMessages(messages, order),
+          dbMs: getNow() - dbRequestStartedAt,
+        };
+      };
+
+      const firstPageSize = hasCachedMessages ? MESSAGE_HISTORY_FULL_PAGE_SIZE : MESSAGE_HISTORY_INITIAL_PAGE_SIZE;
+      const firstOrder = hasCachedMessages ? 'ASC' : 'DESC';
+      const firstLoad = await loadFromDatabase(firstPageSize, firstOrder);
+      const nextMessages = firstLoad.messages;
 
       if (loadId !== loadIdRef.current) {
         return nextMessages;
@@ -560,26 +577,65 @@ export const useMessageLstCache = (key: string): MessageListCacheState => {
         return mergedMessages;
       });
 
+      const needsFullRefresh = !hasCachedMessages && nextMessages.length >= MESSAGE_HISTORY_INITIAL_PAGE_SIZE;
+      setState({
+        isLoading: false,
+        isRefreshing: needsFullRefresh,
+        error: null,
+        hasCachedMessages: nextMessages.length > 0 || hasCachedMessages,
+      });
+
+      const firstTotalMs = getNow() - startedAt;
+      if (shouldLogMessageLoad(firstTotalMs)) {
+        console.info('[MessageLoad] conversation history loaded', {
+          conversationId: key,
+          cached: hasCachedMessages,
+          partial: needsFullRefresh,
+          messages: nextMessages.length,
+          payloadBytes: getPayloadBytes(nextMessages),
+          dbMs: Math.round(firstLoad.dbMs),
+          totalMs: Math.round(firstTotalMs),
+        });
+      }
+
+      if (!needsFullRefresh) {
+        return nextMessages;
+      }
+
+      const fullLoad = await loadFromDatabase(MESSAGE_HISTORY_FULL_PAGE_SIZE);
+      const fullMessages = fullLoad.messages;
+
+      if (loadId !== loadIdRef.current) {
+        return fullMessages;
+      }
+
+      update((currentList) => {
+        const mergedMessages = mergeLoadedMessages(key, currentList, fullMessages, cachedMessageIds);
+        rememberConversationMessages(key, mergedMessages);
+        return mergedMessages;
+      });
+
       setState({
         isLoading: false,
         isRefreshing: false,
         error: null,
-        hasCachedMessages: nextMessages.length > 0 || hasCachedMessages,
+        hasCachedMessages: fullMessages.length > 0,
       });
 
       const totalMs = getNow() - startedAt;
       if (shouldLogMessageLoad(totalMs)) {
         console.info('[MessageLoad] conversation history loaded', {
           conversationId: key,
-          cached: hasCachedMessages,
-          messages: nextMessages.length,
-          payloadBytes: getPayloadBytes(nextMessages),
-          dbMs: Math.round(dbReturnedAt - dbRequestStartedAt),
+          cached: false,
+          partial: false,
+          messages: fullMessages.length,
+          payloadBytes: getPayloadBytes(fullMessages),
+          dbMs: Math.round(fullLoad.dbMs),
           totalMs: Math.round(totalMs),
         });
       }
 
-      return nextMessages;
+      return fullMessages;
     } catch (error) {
       if (loadId !== loadIdRef.current) {
         return [] as TMessage[];

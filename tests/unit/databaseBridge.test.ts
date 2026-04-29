@@ -76,7 +76,7 @@ describe('databaseBridge', () => {
 
       const result = await handlers['getConversationMessages']({ conversation_id: 'c1' });
 
-      expect(repo.getMessages).toHaveBeenCalledWith('c1', 0, 10000);
+      expect(repo.getMessages).toHaveBeenCalledWith('c1', 0, 10000, 'ASC');
       expect(result).toEqual(msgs);
     });
 
@@ -98,6 +98,7 @@ describe('databaseBridge', () => {
         conversationId: 'c1',
         page: 1,
         pageSize: 50,
+        order: 'ASC',
         messages: 1,
         total: 3,
         hasMore: true,
@@ -127,12 +128,12 @@ describe('databaseBridge', () => {
       expect(result).toEqual([]);
     });
 
-    it('uses provided page and pageSize', async () => {
+    it('uses provided page, pageSize, and order', async () => {
       vi.mocked(repo.getMessages).mockReturnValue({ data: [], total: 0, hasMore: false });
 
-      await handlers['getConversationMessages']({ conversation_id: 'c1', page: 2, pageSize: 50 });
+      await handlers['getConversationMessages']({ conversation_id: 'c1', page: 2, pageSize: 50, order: 'DESC' });
 
-      expect(repo.getMessages).toHaveBeenCalledWith('c1', 2, 50);
+      expect(repo.getMessages).toHaveBeenCalledWith('c1', 2, 50, 'DESC');
     });
   });
 
