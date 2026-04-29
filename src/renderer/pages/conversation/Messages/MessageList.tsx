@@ -415,13 +415,16 @@ const MessageList: React.FC<{
       <div
         className='relative flex-1 h-full flex items-center justify-center px-20px'
         data-testid='message-list-loading'
+        role='status'
+        aria-live='polite'
+        aria-busy='true'
       >
-        <div
-          className='w-full max-w-680px flex flex-col gap-14px'
-          aria-label={t('messages.loadingHistory', { defaultValue: 'Loading conversation history…' })}
-        >
+        <div className='w-full max-w-680px flex flex-col gap-14px'>
           {[0, 1, 2].map((item) => (
-            <div key={item} className='rounded-16px border border-solid border-[var(--color-border-2)] bg-1 p-14px'>
+            <div
+              key={item}
+              className='rounded-18px border border-solid border-[var(--color-border-2)] bg-1/84 p-14px shadow-[0_8px_28px_rgba(15,23,42,0.05)] backdrop-blur-md'
+            >
               <div className='h-12px w-38% rounded-full bg-[var(--color-fill-3)] animate-pulse' />
               <div className='mt-12px h-10px w-full rounded-full bg-[var(--color-fill-2)] animate-pulse' />
               <div className='mt-8px h-10px w-72% rounded-full bg-[var(--color-fill-2)] animate-pulse' />
@@ -437,8 +440,12 @@ const MessageList: React.FC<{
 
   if (processedList.length === 0 && loadingError) {
     return (
-      <div className='relative flex-1 h-full flex items-center justify-center px-20px' data-testid='message-list-error'>
-        <div className='max-w-420px rounded-16px border border-solid border-[var(--color-border-2)] bg-1 p-18px text-center shadow-sm'>
+      <div
+        className='relative flex-1 h-full flex items-center justify-center px-20px'
+        data-testid='message-list-error'
+        role='alert'
+      >
+        <div className='max-w-420px rounded-18px border border-solid border-[var(--color-border-2)] bg-1/90 p-18px text-center shadow-[0_12px_36px_rgba(15,23,42,0.08)] backdrop-blur-md'>
           <div className='text-14px font-medium text-t-primary'>
             {t('messages.historyLoadFailed', { defaultValue: 'Could not load conversation history' })}
           </div>
@@ -484,7 +491,12 @@ const MessageList: React.FC<{
       </Image.PreviewGroup>
 
       {isRefreshing && (
-        <div className='absolute top-12px left-50% z-20 -translate-x-50% rounded-full border border-solid border-[var(--color-border-2)] bg-1 px-12px py-5px text-12px text-t-secondary shadow-sm'>
+        <div
+          className='absolute top-12px left-50% z-20 -translate-x-50% rounded-full border border-solid border-[var(--color-border-2)] bg-1/86 px-12px py-5px text-12px text-t-secondary shadow-[0_8px_24px_rgba(15,23,42,0.08)] backdrop-blur-md'
+          data-testid='message-list-refreshing'
+          role='status'
+          aria-live='polite'
+        >
           {t('messages.refreshingHistory', { defaultValue: 'Refreshing history…' })}
         </div>
       )}

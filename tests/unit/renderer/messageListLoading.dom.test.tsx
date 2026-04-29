@@ -74,8 +74,26 @@ describe('MessageList loading state', () => {
     renderMessageList(<MessageList isLoading />);
 
     expect(screen.getByTestId('message-list-loading')).toBeInTheDocument();
+    expect(screen.getByRole('status')).toHaveAttribute('aria-busy', 'true');
     expect(screen.getByText('Loading conversation history…')).toBeInTheDocument();
     expect(screen.queryByTestId('virtuoso')).not.toBeInTheDocument();
+  });
+
+  it('renders a subtle refreshing indicator over cached messages', () => {
+    renderMessageList(<MessageList isRefreshing />, [
+      {
+        id: 'msg-refreshing-1',
+        msg_id: 'msg-refreshing-1',
+        conversation_id: 'conv-1',
+        type: 'text',
+        position: 'left',
+        content: { content: 'cached while refreshing' },
+      } as TMessage,
+    ]);
+
+    expect(screen.getByTestId('virtuoso')).toHaveTextContent('cached while refreshing');
+    expect(screen.getByTestId('message-list-refreshing')).toHaveTextContent('Refreshing history…');
+    expect(screen.getByTestId('message-list-refreshing')).toHaveAttribute('role', 'status');
   });
 
   it('renders an error state with retry when history loading fails', () => {
@@ -83,6 +101,7 @@ describe('MessageList loading state', () => {
     renderMessageList(<MessageList loadingError={new Error('network timeout')} onRetryLoad={retry} />);
 
     expect(screen.getByTestId('message-list-error')).toBeInTheDocument();
+    expect(screen.getByRole('alert')).toBeInTheDocument();
     expect(screen.getByText('Could not load conversation history')).toBeInTheDocument();
     expect(screen.getByText('network timeout')).toBeInTheDocument();
 
