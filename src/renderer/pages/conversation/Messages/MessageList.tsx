@@ -13,7 +13,7 @@ import { Down } from '@icon-park/react';
 import MessageAcpPermission from '@renderer/pages/conversation/Messages/acp/MessageAcpPermission';
 import MessageAcpToolCall from '@renderer/pages/conversation/Messages/acp/MessageAcpToolCall';
 import classNames from 'classnames';
-import React, { createContext, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, { createContext, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useLocation } from 'react-router-dom';
 import { Virtuoso } from 'react-virtuoso';
@@ -85,17 +85,6 @@ const highlightStyle: React.CSSProperties = {
 };
 
 const MESSAGE_RENDER_SLOW_THRESHOLD_MS = 500;
-const MESSAGE_NAVIGATION_MARKER_LIMIT = 48;
-
-type VisibleMessageRange = { startIndex: number; endIndex: number };
-
-type MessageNavigationItem = {
-  id: string;
-  index: number;
-  label: string;
-  tone: 'user' | 'assistant' | 'tool' | 'summary';
-};
-
 const getNow = () => (typeof performance !== 'undefined' ? performance.now() : Date.now());
 
 const shouldLogMessageRender = (durationMs: number): boolean => {
@@ -110,52 +99,6 @@ const shouldLogMessageRender = (durationMs: number): boolean => {
 };
 
 const getUnhandledMessageType = (_message: never): string => 'unknown';
-
-const getMessageNavigationLabel = (item: IMessageVO, index: number): string => {
-  if ('type' in item && item.type === 'file_summary') return `File changes ${index + 1}`;
-  if ('type' in item && item.type === 'tool_summary') return `Tool calls ${index + 1}`;
-
-  const message = item as TMessage;
-  const rawContent =
-    typeof message.content === 'object' && message.content && 'content' in message.content
-      ? String((message.content as { content?: unknown }).content ?? '')
-      : '';
-  const preview = rawContent.trim().replace(/\s+/g, ' ').slice(0, 60);
-  return preview || `Message ${index + 1}`;
-};
-
-const getMessageNavigationTone = (item: IMessageVO): MessageNavigationItem['tone'] => {
-  if ('type' in item && item.type === 'file_summary') return 'summary';
-  if ('type' in item && item.type === 'tool_summary') return 'tool';
-  const message = item as TMessage;
-  if (message.position === 'right') return 'user';
-  if (message.type === 'tool_call' || message.type === 'acp_tool_call' || message.type === 'tool_group') return 'tool';
-  return 'assistant';
-};
-
-const buildMessageNavigationItems = (items: IMessageVO[]): MessageNavigationItem[] => {
-  if (items.length <= 1) return [];
-  const step = Math.max(1, Math.ceil(items.length / MESSAGE_NAVIGATION_MARKER_LIMIT));
-  const indexes = new Set<number>();
-  for (let index = 0; index < items.length; index += step) indexes.add(index);
-  indexes.add(items.length - 1);
-
-  return Array.from(indexes)
-    .sort((a, b) => a - b)
-    .map((index) => ({
-      id: getProcessedItemAnchorId(items[index]),
-      index,
-      label: getMessageNavigationLabel(items[index], index),
-      tone: getMessageNavigationTone(items[index]),
-    }));
-};
-
-const getNavigationToneClass = (tone: MessageNavigationItem['tone']): string => {
-  if (tone === 'user') return 'bg-[var(--color-aou-6-brand)]';
-  if (tone === 'tool') return 'bg-[var(--color-warning-6)]';
-  if (tone === 'summary') return 'bg-[var(--color-success-6)]';
-  return 'bg-[var(--color-text-3)]';
-};
 
 // Image preview context
 export const ImagePreviewContext = createContext<{ inPreviewGroup: boolean }>({ inPreviewGroup: false });
@@ -227,56 +170,6 @@ const MessageItem: React.FC<{ message: TMessage; highlighted?: boolean }> = Reac
     prev.highlighted === next.highlighted
 );
 
-const MessageNavigationRail: React.FC<{
-  items: MessageNavigationItem[];
-  totalCount: number;
-  visibleRange: VisibleMessageRange;
-  onJump: (index: number) => void;
-}> = ({ items, totalCount, visibleRange, onJump }) => {
-  if (items.length === 0 || totalCount <= 1) return null;
-
-  const startPercent = Math.max(0, Math.min(100, (visibleRange.startIndex / Math.max(1, totalCount - 1)) * 100));
-  const endPercent = Math.max(startPercent, Math.min(100, ((visibleRange.endIndex + 1) / totalCount) * 100));
-  const heightPercent = Math.max(6, endPercent - startPercent);
-
-  return (
-    <div
-      className='pointer-events-none absolute right-0 top-58px bottom-72px z-30 flex items-center pr-2px md:pr-4px'
-      data-testid='message-navigation-rail'
-    >
-      <div className='group pointer-events-auto relative flex h-full w-32px items-center justify-center md:w-36px'>
-        <div className='relative h-full w-18px rounded-full border border-solid border-[var(--color-border-2)] bg-1/74 shadow-[0_8px_24px_rgba(15,23,42,0.08)] backdrop-blur-md transition-all group-hover:w-24px'>
-          <div
-            className='absolute left-50% w-7px -translate-x-50% rounded-full bg-[var(--color-aou-6-brand)] opacity-75 transition-all group-hover:w-10px group-hover:opacity-95'
-            style={{ top: `${startPercent}%`, height: `${heightPercent}%` }}
-          />
-          {items.map((item) => {
-            const top = (item.index / Math.max(1, totalCount - 1)) * 100;
-            return (
-              <button
-                key={`${item.id}-${item.index}`}
-                type='button'
-                className='absolute left-50% h-14px w-24px -translate-x-50% -translate-y-50% border-none bg-transparent p-0 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-aou-6-brand)] focus-visible:ring-offset-1 focus-visible:ring-offset-[var(--color-bg-1)]'
-                style={{ top: `${top}%` }}
-                onClick={() => onJump(item.index)}
-                aria-label={`Jump to message ${item.index + 1}: ${item.label}`}
-                title={item.label}
-              >
-                <span
-                  className={classNames(
-                    'mx-auto block h-4px w-10px rd-999px opacity-55 transition-all group-hover:h-5px group-hover:w-16px group-hover:opacity-95',
-                    getNavigationToneClass(item.tone)
-                  )}
-                />
-              </button>
-            );
-          })}
-        </div>
-      </div>
-    </div>
-  );
-};
-
 const MessageList: React.FC<{
   className?: string;
   emptySlot?: React.ReactNode;
@@ -293,7 +186,6 @@ const MessageList: React.FC<{
   const locationState = (location.state || {}) as ConversationLocationState;
   const targetMessageId = locationState.targetMessageId;
   const [highlightedMessageId, setHighlightedMessageId] = useState<string | undefined>();
-  const [visibleRange, setVisibleRange] = useState<VisibleMessageRange>({ startIndex: 0, endIndex: 0 });
   const handledTargetKeyRef = useRef<string>('');
 
   // Pre-process message list to group Codex turn_diff messages
@@ -381,8 +273,6 @@ const MessageList: React.FC<{
     };
   }, [list]);
   const processedList = processedListStats.items;
-  const navigationItems = useMemo(() => buildMessageNavigationItems(processedList), [processedList]);
-
   // Use auto-scroll hook
   const {
     virtuosoRef,
@@ -500,18 +390,6 @@ const MessageList: React.FC<{
     scrollToBottom('smooth');
   };
 
-  const handleNavigationJump = useCallback(
-    (index: number) => {
-      hideScrollButton();
-      virtuosoRef.current?.scrollToIndex({
-        index,
-        align: 'center',
-        behavior: 'smooth',
-      });
-    },
-    [hideScrollButton, virtuosoRef]
-  );
-
   const renderItem = (_index: number, item: (typeof processedList)[0]) => {
     const highlighted = matchesTargetMessage(item, highlightedMessageId);
     if ('type' in item && ['file_summary', 'tool_summary'].includes(item.type)) {
@@ -600,7 +478,6 @@ const MessageList: React.FC<{
             increaseViewportBy={1200}
             itemContent={renderItem}
             followOutput={handleFollowOutput}
-            rangeChanged={setVisibleRange}
             onScroll={handleScroll}
             atBottomStateChange={handleAtBottomStateChange}
             components={{
@@ -621,13 +498,6 @@ const MessageList: React.FC<{
           {t('messages.refreshingHistory', { defaultValue: 'Refreshing history…' })}
         </div>
       )}
-
-      <MessageNavigationRail
-        items={navigationItems}
-        totalCount={processedList.length}
-        visibleRange={visibleRange}
-        onJump={handleNavigationJump}
-      />
 
       {showScrollButton && (
         <>
