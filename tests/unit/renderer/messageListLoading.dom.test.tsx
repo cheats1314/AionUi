@@ -11,6 +11,7 @@ const autoScrollMock = vi.hoisted(() => ({
   showScrollButton: false,
   scrollToBottom: vi.fn(),
   hideScrollButton: vi.fn(),
+  scrollToIndex: vi.fn(),
 }));
 
 vi.mock('@arco-design/web-react', async (importOriginal) => {
@@ -33,10 +34,17 @@ vi.mock('react-virtuoso', () => ({
   Virtuoso: ({
     data,
     itemContent,
+    rangeChanged,
   }: {
     data: unknown[];
     itemContent: (index: number, item: unknown) => React.ReactNode;
-  }) => <div data-testid='virtuoso'>{data.map((item, index) => itemContent(index, item))}</div>,
+    rangeChanged?: (range: { startIndex: number; endIndex: number }) => void;
+  }) => {
+    React.useEffect(() => {
+      rangeChanged?.({ startIndex: 0, endIndex: Math.max(0, data.length - 1) });
+    }, [data.length, rangeChanged]);
+    return <div data-testid='virtuoso'>{data.map((item, index) => itemContent(index, item))}</div>;
+  },
 }));
 
 vi.mock('@icon-park/react', async (importOriginal) => {
@@ -53,11 +61,11 @@ vi.mock('@/renderer/hooks/file/useAutoPreviewOfficeFiles', () => ({
 
 vi.mock('@/renderer/pages/conversation/Messages/useAutoScroll', () => ({
   useAutoScroll: () => ({
-    virtuosoRef: { current: null },
     handleScrollerRef: vi.fn(),
     handleScroll: vi.fn(),
     handleAtBottomStateChange: vi.fn(),
     handleFollowOutput: vi.fn(),
+    virtuosoRef: { current: { scrollToIndex: autoScrollMock.scrollToIndex } },
     showScrollButton: autoScrollMock.showScrollButton,
     scrollToBottom: autoScrollMock.scrollToBottom,
     hideScrollButton: autoScrollMock.hideScrollButton,
@@ -88,6 +96,7 @@ afterEach(() => {
   autoScrollMock.showScrollButton = false;
   autoScrollMock.scrollToBottom.mockClear();
   autoScrollMock.hideScrollButton.mockClear();
+  autoScrollMock.scrollToIndex.mockClear();
   localStorage.clear();
 });
 
@@ -136,6 +145,46 @@ describe('MessageList loading state', () => {
 
     expect(autoScrollMock.hideScrollButton).toHaveBeenCalledTimes(1);
     expect(autoScrollMock.scrollToBottom).toHaveBeenCalledWith('smooth');
+  });
+
+  it('renders a message navigation rail with jump targets', () => {
+    renderMessageList(<MessageList />, [
+      {
+        id: 'msg-rail-1',
+        msg_id: 'msg-rail-1',
+        conversation_id: 'conv-1',
+        type: 'text',
+        position: 'left',
+        content: { content: 'first visible message' },
+      } as TMessage,
+      {
+        id: 'msg-rail-2',
+        msg_id: 'msg-rail-2',
+        conversation_id: 'conv-1',
+        type: 'text',
+        position: 'right',
+        content: { content: 'second visible message' },
+      } as TMessage,
+      {
+        id: 'msg-rail-3',
+        msg_id: 'msg-rail-3',
+        conversation_id: 'conv-1',
+        type: 'text',
+        position: 'left',
+        content: { content: 'third visible message' },
+      } as TMessage,
+    ]);
+
+    expect(screen.getByTestId('message-navigation-rail')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Jump to message 2' }));
+
+    expect(autoScrollMock.hideScrollButton).toHaveBeenCalledTimes(1);
+    expect(autoScrollMock.scrollToIndex).toHaveBeenCalledWith({
+      index: 1,
+      align: 'center',
+      behavior: 'smooth',
+    });
   });
 
   it('renders an error state with retry when history loading fails', () => {
