@@ -460,6 +460,99 @@ describe('message hooks cache merge', () => {
     });
   });
 
+  it('restores cached messages immediately when switching back to a conversation', async () => {
+    const deferredB = createDeferred<TestMessage[]>();
+    const deferredARefresh = createDeferred<TestMessage[]>();
+    mockGetConversationMessagesInvoke
+      .mockResolvedValueOnce([
+        {
+          id: 'back-a-1',
+          msg_id: 'back-a-1',
+          conversation_id: 'conv-back-a',
+          type: 'text',
+          content: { content: 'cached conversation a' },
+        },
+      ])
+      .mockReturnValueOnce(deferredB.promise)
+      .mockReturnValueOnce(deferredARefresh.promise);
+
+    const view = render(
+      <MessageListProvider value={[]}>
+        <CacheProbe conversationId='conv-back-a' />
+      </MessageListProvider>
+    );
+
+    await waitFor(() => {
+      expect(screen.getByTestId('messages').textContent).toContain('cached conversation a');
+    });
+
+    view.rerender(
+      <MessageListProvider value={[]}>
+        <CacheProbe conversationId='conv-back-b' />
+      </MessageListProvider>
+    );
+
+    await waitFor(() => {
+      expect(screen.getByTestId('messages').textContent).toBe('[]');
+      expect(screen.getByTestId('cache-state').textContent).toContain('"isLoading":true');
+    });
+
+    view.rerender(
+      <MessageListProvider value={[]}>
+        <CacheProbe conversationId='conv-back-a' />
+      </MessageListProvider>
+    );
+
+    await waitFor(() => {
+      expect(screen.getByTestId('messages').textContent).toContain('cached conversation a');
+      expect(screen.getByTestId('cache-state').textContent).toContain('"isRefreshing":true');
+    });
+    expect(screen.getByTestId('messages').textContent).not.toContain('refreshed conversation a');
+    expect(mockGetConversationMessagesInvoke).toHaveBeenNthCalledWith(1, {
+      conversation_id: 'conv-back-a',
+      page: 0,
+      pageSize: 301,
+      order: 'DESC',
+    });
+    expect(mockGetConversationMessagesInvoke).toHaveBeenNthCalledWith(2, {
+      conversation_id: 'conv-back-b',
+      page: 0,
+      pageSize: 301,
+      order: 'DESC',
+    });
+    expect(mockGetConversationMessagesInvoke).toHaveBeenNthCalledWith(3, {
+      conversation_id: 'conv-back-a',
+      page: 0,
+      pageSize: 10000,
+      order: 'ASC',
+    });
+
+    deferredB.resolve([
+      {
+        id: 'back-b-1',
+        msg_id: 'back-b-1',
+        conversation_id: 'conv-back-b',
+        type: 'text',
+        content: { content: 'stale conversation b' },
+      },
+    ]);
+    deferredARefresh.resolve([
+      {
+        id: 'back-a-2',
+        msg_id: 'back-a-2',
+        conversation_id: 'conv-back-a',
+        type: 'text',
+        content: { content: 'refreshed conversation a' },
+      },
+    ]);
+
+    await waitFor(() => {
+      const content = screen.getByTestId('messages').textContent ?? '';
+      expect(content).toContain('refreshed conversation a');
+      expect(content).not.toContain('stale conversation b');
+    });
+  });
+
   it('keeps locally updated messages in cache for immediate conversation returns', async () => {
     mockGetConversationMessagesInvoke.mockResolvedValueOnce([
       {
