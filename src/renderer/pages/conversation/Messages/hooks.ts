@@ -17,7 +17,8 @@ const [useChatKey, ChatKeyProvider] = createContext('');
 const beforeUpdateMessageListStack: Array<(list: TMessage[]) => TMessage[]> = [];
 
 const MESSAGE_HISTORY_CACHE_LIMIT = 12;
-const MESSAGE_HISTORY_INITIAL_PAGE_SIZE = 300;
+const MESSAGE_HISTORY_INITIAL_DISPLAY_LIMIT = 300;
+const MESSAGE_HISTORY_INITIAL_QUERY_SIZE = MESSAGE_HISTORY_INITIAL_DISPLAY_LIMIT + 1;
 const MESSAGE_HISTORY_FULL_PAGE_SIZE = 10000;
 const MESSAGE_LOAD_SLOW_THRESHOLD_MS = 500;
 const messageHistoryCache = new Map<string, TMessage[]>();
@@ -562,10 +563,13 @@ export const useMessageLstCache = (key: string): MessageListCacheState => {
         };
       };
 
-      const firstPageSize = hasCachedMessages ? MESSAGE_HISTORY_FULL_PAGE_SIZE : MESSAGE_HISTORY_INITIAL_PAGE_SIZE;
+      const firstPageSize = hasCachedMessages ? MESSAGE_HISTORY_FULL_PAGE_SIZE : MESSAGE_HISTORY_INITIAL_QUERY_SIZE;
       const firstOrder = hasCachedMessages ? 'ASC' : 'DESC';
       const firstLoad = await loadFromDatabase(firstPageSize, firstOrder);
-      const nextMessages = firstLoad.messages;
+      const needsFullRefresh = !hasCachedMessages && firstLoad.messages.length > MESSAGE_HISTORY_INITIAL_DISPLAY_LIMIT;
+      const nextMessages = needsFullRefresh
+        ? firstLoad.messages.slice(firstLoad.messages.length - MESSAGE_HISTORY_INITIAL_DISPLAY_LIMIT)
+        : firstLoad.messages;
 
       if (loadId !== loadIdRef.current) {
         return nextMessages;
@@ -576,8 +580,6 @@ export const useMessageLstCache = (key: string): MessageListCacheState => {
         rememberConversationMessages(key, mergedMessages);
         return mergedMessages;
       });
-
-      const needsFullRefresh = !hasCachedMessages && nextMessages.length >= MESSAGE_HISTORY_INITIAL_PAGE_SIZE;
       setState({
         isLoading: false,
         isRefreshing: needsFullRefresh,

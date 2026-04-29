@@ -210,12 +210,12 @@ describe('message hooks cache merge', () => {
   });
 
   it('loads the latest page first before refreshing long conversation history', async () => {
-    const latestDescMessages: TestMessage[] = Array.from({ length: 300 }, (_, index) => ({
-      id: `latest-${300 - index}`,
-      msg_id: `latest-${300 - index}`,
+    const latestDescMessages: TestMessage[] = Array.from({ length: 301 }, (_, index) => ({
+      id: `latest-${301 - index}`,
+      msg_id: `latest-${301 - index}`,
       conversation_id: 'conv-long',
       type: 'text',
-      content: { content: `latest ${300 - index}` },
+      content: { content: `latest ${301 - index}` },
     }));
     const fullDeferred = createDeferred<TestMessage[]>();
     mockGetConversationMessagesInvoke
@@ -231,14 +231,14 @@ describe('message hooks cache merge', () => {
     await waitFor(() => {
       const messages = JSON.parse(screen.getByTestId('messages').textContent ?? '[]') as TestMessage[];
       expect(messages).toHaveLength(300);
-      expect(messages[0].id).toBe('latest-1');
-      expect(messages[299].id).toBe('latest-300');
+      expect(messages[0].id).toBe('latest-2');
+      expect(messages[299].id).toBe('latest-301');
       expect(screen.getByTestId('cache-state').textContent).toContain('"isRefreshing":true');
     });
     expect(mockGetConversationMessagesInvoke).toHaveBeenNthCalledWith(1, {
       conversation_id: 'conv-long',
       page: 0,
-      pageSize: 300,
+      pageSize: 301,
       order: 'DESC',
     });
     expect(mockGetConversationMessagesInvoke).toHaveBeenNthCalledWith(2, {
@@ -299,7 +299,7 @@ describe('message hooks cache merge', () => {
     expect(mockGetConversationMessagesInvoke).toHaveBeenCalledWith({
       conversation_id: 'conv-short',
       page: 0,
-      pageSize: 300,
+      pageSize: 301,
       order: 'DESC',
     });
   });
