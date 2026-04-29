@@ -40,7 +40,7 @@ import UploadProgressBar from '@renderer/components/media/UploadProgressBar';
 import { allSupportedExts } from '@renderer/services/FileService';
 import SpeechInputButton from '@/renderer/components/chat/SpeechInputButton';
 import { appendSpeechTranscript } from '@/renderer/hooks/system/useSpeechInput';
-import { getConversationInputHistory, isCaretOnFirstLine } from '@/renderer/utils/chat/messageHistory';
+import { getConversationInputHistory, isCaretAtLineStart, isCaretOnFirstLine } from '@/renderer/utils/chat/messageHistory';
 import './sendbox.css';
 
 const constVoid = (): void => undefined;
@@ -280,6 +280,13 @@ const SendBox: React.FC<{
   // 检测是否单行
   // Detect whether to use single-line or multi-line mode
   useEffect(() => {
+    // 锁定多行模式时，始终使用多行
+    // When locked to multi-line mode, always use multi-line
+    if (lockMultiLine) {
+      setIsSingleLine(false);
+      return;
+    }
+
     // 有换行符直接多行
     // Switch to multi-line mode if newline character exists
     if (input.includes('\n')) {
@@ -1128,8 +1135,16 @@ const SendBox: React.FC<{
       }
 
       if (event.key === 'ArrowUp') {
+        // Not on first line → let default cursor-up happen
         if (historyNavigationIndex === null && !isCaretOnFirstLine(event.currentTarget)) {
           return false;
+        }
+
+        // On first line but not at line start → move caret to line start instead of switching history
+        if (historyNavigationIndex === null && !isCaretAtLineStart(event.currentTarget)) {
+          event.preventDefault();
+          event.currentTarget.setSelectionRange(0, 0);
+          return true;
         }
 
         const nextIndex =

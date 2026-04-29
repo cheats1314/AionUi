@@ -83,8 +83,8 @@ export const calcLayoutMetrics = (input: LayoutCalcInput): LayoutMetrics => {
   const viewportWidth = containerWidth || (typeof window === 'undefined' ? 0 : window.innerWidth);
   const mobileViewportWidth = viewportWidth || (typeof window === 'undefined' ? 0 : window.innerWidth);
   const mobileWorkspaceWidthPx = Math.min(
-    Math.max(260, Math.round(mobileViewportWidth * 0.78)),
-    Math.max(260, Math.min(360, mobileViewportWidth - 64))
+    Math.max(240, Math.round(mobileViewportWidth * 0.62)),
+    Math.max(240, Math.min(320, mobileViewportWidth - 64))
   );
   const desktopWorkspaceWidthPx = Math.min(500, Math.max(200, (workspaceSplitRatio / 100) * (viewportWidth || 0)));
   const workspaceWidthPx = workspaceEnabled ? (isMobile ? mobileWorkspaceWidthPx : desktopWorkspaceWidthPx) : 0;
