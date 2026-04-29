@@ -265,6 +265,45 @@ describe('message hooks cache merge', () => {
     });
   });
 
+  it('does not start a full refresh when the latest page contains the entire conversation', async () => {
+    const shortMessages: TestMessage[] = [
+      {
+        id: 'short-2',
+        msg_id: 'short-2',
+        conversation_id: 'conv-short',
+        type: 'text',
+        content: { content: 'second short message' },
+      },
+      {
+        id: 'short-1',
+        msg_id: 'short-1',
+        conversation_id: 'conv-short',
+        type: 'text',
+        content: { content: 'first short message' },
+      },
+    ];
+    mockGetConversationMessagesInvoke.mockResolvedValueOnce(shortMessages);
+
+    render(
+      <MessageListProvider value={[]}>
+        <CacheProbe conversationId='conv-short' />
+      </MessageListProvider>
+    );
+
+    await waitFor(() => {
+      const messages = JSON.parse(screen.getByTestId('messages').textContent ?? '[]') as TestMessage[];
+      expect(messages.map((message) => message.id)).toEqual(['short-1', 'short-2']);
+      expect(screen.getByTestId('cache-state').textContent).toContain('"isRefreshing":false');
+    });
+    expect(mockGetConversationMessagesInvoke).toHaveBeenCalledTimes(1);
+    expect(mockGetConversationMessagesInvoke).toHaveBeenCalledWith({
+      conversation_id: 'conv-short',
+      page: 0,
+      pageSize: 300,
+      order: 'DESC',
+    });
+  });
+
   it('shows cached conversation messages immediately while refreshing in the background', async () => {
     mockGetConversationMessagesInvoke.mockResolvedValueOnce([
       {
@@ -302,6 +341,12 @@ describe('message hooks cache merge', () => {
       expect(screen.getByTestId('cache-state').textContent).toContain('"isRefreshing":true');
     });
     expect(screen.getByTestId('cache-state').textContent).toContain('"isLoading":false');
+    expect(mockGetConversationMessagesInvoke).toHaveBeenLastCalledWith({
+      conversation_id: 'conv-cached',
+      page: 0,
+      pageSize: 10000,
+      order: 'ASC',
+    });
 
     deferred.resolve([
       {
