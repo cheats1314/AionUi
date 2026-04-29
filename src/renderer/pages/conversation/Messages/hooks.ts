@@ -514,6 +514,7 @@ export const useReloadMessageListFromDatabase = (conversationId?: string) => {
 
 export const useMessageLstCache = (key: string): MessageListCacheState => {
   const update = useUpdateMessageList();
+  const messages = useMessageList();
   const loadIdRef = useRef(0);
   const [state, setState] = useState<Omit<MessageListCacheState, 'reload'>>({
     isLoading: Boolean(key),
@@ -521,6 +522,10 @@ export const useMessageLstCache = (key: string): MessageListCacheState => {
     error: null,
     hasCachedMessages: false,
   });
+  const latestStateRef = useRef(state);
+  const latestMessagesRef = useRef(messages);
+  latestStateRef.current = state;
+  latestMessagesRef.current = messages;
 
   const loadMessages = useCallback(async () => {
     if (!key) {
@@ -657,6 +662,30 @@ export const useMessageLstCache = (key: string): MessageListCacheState => {
   useLayoutEffect(() => {
     void loadMessages().catch(() => {});
   }, [loadMessages]);
+
+  useEffect(() => {
+    if (!key || typeof window === 'undefined') return;
+
+    const reloadIfNeeded = () => {
+      if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return;
+
+      const currentState = latestStateRef.current;
+      if (currentState.isLoading || currentState.isRefreshing) return;
+
+      const hasCurrentMessages = latestMessagesRef.current.some((message) => message.conversation_id === key);
+      if (!currentState.error && hasCurrentMessages) return;
+
+      void loadMessages().catch(() => {});
+    };
+
+    window.addEventListener('focus', reloadIfNeeded);
+    document.addEventListener('visibilitychange', reloadIfNeeded);
+
+    return () => {
+      window.removeEventListener('focus', reloadIfNeeded);
+      document.removeEventListener('visibilitychange', reloadIfNeeded);
+    };
+  }, [key, loadMessages]);
 
   return {
     ...state,

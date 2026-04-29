@@ -190,6 +190,38 @@ describe('message hooks cache merge', () => {
     });
   });
 
+  it('retries a failed empty history load when the window regains focus', async () => {
+    mockGetConversationMessagesInvoke
+      .mockRejectedValueOnce(new Error('temporary network failure'))
+      .mockResolvedValueOnce([
+        {
+          id: 'focus-retry-1',
+          msg_id: 'focus-retry-1',
+          conversation_id: 'conv-focus-retry',
+          type: 'text',
+          content: { content: 'loaded after focus' },
+        },
+      ]);
+
+    render(
+      <MessageListProvider value={[]}>
+        <CacheRetryProbe conversationId='conv-focus-retry' />
+      </MessageListProvider>
+    );
+
+    await waitFor(() => {
+      expect(screen.getByTestId('cache-error').textContent).toBe('temporary network failure');
+    });
+
+    window.dispatchEvent(new Event('focus'));
+
+    await waitFor(() => {
+      expect(screen.getByTestId('messages').textContent).toContain('loaded after focus');
+      expect(screen.getByTestId('cache-error').textContent).toBe('');
+    });
+    expect(mockGetConversationMessagesInvoke).toHaveBeenCalledTimes(2);
+  });
+
   it('reports loading while conversation history is still pending', async () => {
     const deferred = createDeferred<TestMessage[]>();
     mockGetConversationMessagesInvoke.mockReturnValue(deferred.promise);
