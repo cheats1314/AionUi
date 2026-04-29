@@ -92,12 +92,12 @@ test.describe('F-MSG-07 重试与撤销上一轮对话', () => {
     await textarea.press('Enter');
     await waitForAiReply(page, 120_000);
 
-    const beforeMessages = await invokeBridge<Array<{ id: string; type?: string; position?: string; content?: { content?: string } }>>(
-      page,
-      'database.get-conversation-messages',
-      { conversation_id: conversationId }
-    );
-    const beforeUserCount = beforeMessages.filter((message) => message.type === 'text' && message.position === 'right').length;
+    const beforeMessages = await invokeBridge<
+      Array<{ id: string; type?: string; position?: string; content?: { content?: string } }>
+    >(page, 'database.get-conversation-messages', { conversation_id: conversationId });
+    const beforeUserCount = beforeMessages.filter(
+      (message) => message.type === 'text' && message.position === 'right'
+    ).length;
     expect(beforeUserCount).toBeGreaterThanOrEqual(2);
 
     await textarea.fill('/rewind');
@@ -110,23 +110,25 @@ test.describe('F-MSG-07 重试与撤销上一轮对话', () => {
     await expect(textarea).toHaveValue('F-MSG-07 rewind second turn', { timeout: 15_000 });
 
     await expect
-      .poll(async () => {
-        const messages = await invokeBridge<Array<{ type?: string; position?: string; content?: { content?: string } }>>(
-          page,
-          'database.get-conversation-messages',
-          { conversation_id: conversationId }
-        );
-        return messages.filter((message) => message.type === 'text' && message.position === 'right').length;
-      }, { timeout: 15_000 })
+      .poll(
+        async () => {
+          const messages = await invokeBridge<
+            Array<{ type?: string; position?: string; content?: { content?: string } }>
+          >(page, 'database.get-conversation-messages', { conversation_id: conversationId });
+          return messages.filter((message) => message.type === 'text' && message.position === 'right').length;
+        },
+        { timeout: 15_000 }
+      )
       .toBe(beforeUserCount - 1);
 
-    const afterMessages = await invokeBridge<Array<{ type?: string; position?: string; content?: { content?: string } }>>(
-      page,
-      'database.get-conversation-messages',
-      { conversation_id: conversationId }
-    );
+    const afterMessages = await invokeBridge<
+      Array<{ type?: string; position?: string; content?: { content?: string } }>
+    >(page, 'database.get-conversation-messages', { conversation_id: conversationId });
     const hasRemovedPrompt = afterMessages.some(
-      (message) => message.type === 'text' && message.position === 'right' && message.content?.content === 'F-MSG-07 rewind second turn'
+      (message) =>
+        message.type === 'text' &&
+        message.position === 'right' &&
+        message.content?.content === 'F-MSG-07 rewind second turn'
     );
     expect(hasRemovedPrompt).toBe(false);
   });
@@ -145,12 +147,12 @@ test.describe('F-MSG-07 重试与撤销上一轮对话', () => {
     await textarea.press('Enter');
     await waitForAiReply(page, 120_000);
 
-    const beforeMessages = await invokeBridge<Array<{ type?: string; position?: string; content?: { content?: string } }>>(
-      page,
-      'database.get-conversation-messages',
-      { conversation_id: conversationId }
-    );
-    const beforeUserCount = beforeMessages.filter((message) => message.type === 'text' && message.position === 'right').length;
+    const beforeMessages = await invokeBridge<
+      Array<{ type?: string; position?: string; content?: { content?: string } }>
+    >(page, 'database.get-conversation-messages', { conversation_id: conversationId });
+    const beforeUserCount = beforeMessages.filter(
+      (message) => message.type === 'text' && message.position === 'right'
+    ).length;
     expect(beforeUserCount).toBeGreaterThanOrEqual(2);
 
     await textarea.fill('/undo');
@@ -159,23 +161,25 @@ test.describe('F-MSG-07 重试与撤销上一轮对话', () => {
     await expect(textarea).toHaveValue('F-MSG-07 codex undo second turn', { timeout: 15_000 });
 
     await expect
-      .poll(async () => {
-        const messages = await invokeBridge<Array<{ type?: string; position?: string; content?: { content?: string } }>>(
-          page,
-          'database.get-conversation-messages',
-          { conversation_id: conversationId }
-        );
-        return messages.filter((message) => message.type === 'text' && message.position === 'right').length;
-      }, { timeout: 15_000 })
+      .poll(
+        async () => {
+          const messages = await invokeBridge<
+            Array<{ type?: string; position?: string; content?: { content?: string } }>
+          >(page, 'database.get-conversation-messages', { conversation_id: conversationId });
+          return messages.filter((message) => message.type === 'text' && message.position === 'right').length;
+        },
+        { timeout: 15_000 }
+      )
       .toBe(beforeUserCount - 1);
 
-    const afterMessages = await invokeBridge<Array<{ type?: string; position?: string; content?: { content?: string } }>>(
-      page,
-      'database.get-conversation-messages',
-      { conversation_id: conversationId }
-    );
+    const afterMessages = await invokeBridge<
+      Array<{ type?: string; position?: string; content?: { content?: string } }>
+    >(page, 'database.get-conversation-messages', { conversation_id: conversationId });
     const hasRemovedPrompt = afterMessages.some(
-      (message) => message.type === 'text' && message.position === 'right' && message.content?.content === 'F-MSG-07 codex undo second turn'
+      (message) =>
+        message.type === 'text' &&
+        message.position === 'right' &&
+        message.content?.content === 'F-MSG-07 codex undo second turn'
     );
     expect(hasRemovedPrompt).toBe(false);
   });
