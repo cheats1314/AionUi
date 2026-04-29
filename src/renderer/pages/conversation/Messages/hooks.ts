@@ -7,7 +7,7 @@
 import { ipcBridge } from '@/common';
 import type { TMessage } from '@/common/chat/chatLib';
 import { composeMessage } from '@/common/chat/chatLib';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { createContext } from '@renderer/utils/ui/createContext';
 
 const [useMessageList, MessageListProvider, useUpdateMessageList] = createContext([] as TMessage[]);
@@ -654,7 +654,7 @@ export const useMessageLstCache = (key: string): MessageListCacheState => {
     }
   }, [key, update]);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     void loadMessages().catch(() => {});
   }, [loadMessages]);
 
