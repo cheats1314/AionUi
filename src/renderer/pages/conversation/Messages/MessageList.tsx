@@ -259,7 +259,7 @@ const MessageNavigationRail: React.FC<{
                 className='absolute left-50% h-14px w-24px -translate-x-50% -translate-y-50% border-none bg-transparent p-0 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-aou-6-brand)] focus-visible:ring-offset-1 focus-visible:ring-offset-[var(--color-bg-1)]'
                 style={{ top: `${top}%` }}
                 onClick={() => onJump(item.index)}
-                aria-label={`Jump to message ${item.index + 1}`}
+                aria-label={`Jump to message ${item.index + 1}: ${item.label}`}
                 title={item.label}
               >
                 <span

@@ -177,7 +177,7 @@ describe('MessageList loading state', () => {
 
     expect(screen.getByTestId('message-navigation-rail')).toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole('button', { name: 'Jump to message 2' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Jump to message 2: second visible message' }));
 
     expect(autoScrollMock.hideScrollButton).toHaveBeenCalledTimes(1);
     expect(autoScrollMock.scrollToIndex).toHaveBeenCalledWith({
