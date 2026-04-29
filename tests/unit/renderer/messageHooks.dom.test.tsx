@@ -209,6 +209,56 @@ describe('message hooks cache merge', () => {
     info.mockRestore();
   });
 
+  it('ignores stale history responses after switching conversations', async () => {
+    const firstConversation = createDeferred<TestMessage[]>();
+    const secondConversation = createDeferred<TestMessage[]>();
+    mockGetConversationMessagesInvoke
+      .mockReturnValueOnce(firstConversation.promise)
+      .mockReturnValueOnce(secondConversation.promise);
+
+    const view = render(
+      <MessageListProvider value={[]}>
+        <CacheProbe conversationId='conv-race-a' />
+      </MessageListProvider>
+    );
+
+    view.rerender(
+      <MessageListProvider value={[]}>
+        <CacheProbe conversationId='conv-race-b' />
+      </MessageListProvider>
+    );
+
+    secondConversation.resolve([
+      {
+        id: 'race-b-1',
+        msg_id: 'race-b-1',
+        conversation_id: 'conv-race-b',
+        type: 'text',
+        content: { content: 'current conversation history' },
+      },
+    ]);
+
+    await waitFor(() => {
+      expect(screen.getByTestId('messages').textContent).toContain('current conversation history');
+    });
+
+    firstConversation.resolve([
+      {
+        id: 'race-a-1',
+        msg_id: 'race-a-1',
+        conversation_id: 'conv-race-a',
+        type: 'text',
+        content: { content: 'stale conversation history' },
+      },
+    ]);
+
+    await waitFor(() => {
+      const content = screen.getByTestId('messages').textContent ?? '';
+      expect(content).toContain('current conversation history');
+      expect(content).not.toContain('stale conversation history');
+    });
+  });
+
   it('loads the latest page first before refreshing long conversation history', async () => {
     const latestDescMessages: TestMessage[] = Array.from({ length: 301 }, (_, index) => ({
       id: `latest-${301 - index}`,
