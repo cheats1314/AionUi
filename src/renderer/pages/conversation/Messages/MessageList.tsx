@@ -503,18 +503,18 @@ const MessageList: React.FC<{
 
       {showScrollButton && (
         <>
-          {/* Gradient mask */}
           <div className='absolute bottom-0 left-0 right-0 h-100px pointer-events-none' />
-          {/* Scroll button */}
           <div className='absolute bottom-20px left-50% transform -translate-x-50% z-100'>
-            <div
-              className='flex items-center justify-center w-40px h-40px rd-full bg-base shadow-lg cursor-pointer hover:bg-1 transition-all hover:scale-110 border-1 border-solid border-3'
+            <button
+              type='button'
+              className='appearance-none flex items-center justify-center w-40px h-40px rd-full bg-base shadow-lg cursor-pointer hover:bg-1 transition-all hover:scale-110 border-1 border-solid border-3 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-aou-6-brand)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--color-bg-1)]'
               onClick={handleScrollButtonClick}
-              title={t('messages.scrollToBottom')}
+              aria-label={t('messages.scrollToBottom', { defaultValue: 'Scroll to bottom' })}
+              title={t('messages.scrollToBottom', { defaultValue: 'Scroll to bottom' })}
               style={{ lineHeight: 0 }}
             >
               <Down theme='filled' size='20' fill={iconColors.secondary} style={{ display: 'block' }} />
-            </div>
+            </button>
           </div>
         </>
       )}

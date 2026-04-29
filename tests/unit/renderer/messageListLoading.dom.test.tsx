@@ -7,6 +7,12 @@ import { ConversationProvider } from '@/renderer/hooks/context/ConversationConte
 import MessageList from '@/renderer/pages/conversation/Messages/MessageList';
 import { MessageListProvider } from '@/renderer/pages/conversation/Messages/hooks';
 
+const autoScrollMock = vi.hoisted(() => ({
+  showScrollButton: false,
+  scrollToBottom: vi.fn(),
+  hideScrollButton: vi.fn(),
+}));
+
 vi.mock('@arco-design/web-react', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@arco-design/web-react')>();
   return {
@@ -45,6 +51,19 @@ vi.mock('@/renderer/hooks/file/useAutoPreviewOfficeFiles', () => ({
   useAutoPreviewOfficeFiles: vi.fn(),
 }));
 
+vi.mock('@/renderer/pages/conversation/Messages/useAutoScroll', () => ({
+  useAutoScroll: () => ({
+    virtuosoRef: { current: null },
+    handleScrollerRef: vi.fn(),
+    handleScroll: vi.fn(),
+    handleAtBottomStateChange: vi.fn(),
+    handleFollowOutput: vi.fn(),
+    showScrollButton: autoScrollMock.showScrollButton,
+    scrollToBottom: autoScrollMock.scrollToBottom,
+    hideScrollButton: autoScrollMock.hideScrollButton,
+  }),
+}));
+
 vi.mock('@/renderer/pages/conversation/Messages/components/MessageText', () => ({
   default: ({ message }: { message: { content: { content: string } } }) => <div>{message.content.content}</div>,
 }));
@@ -66,6 +85,9 @@ const renderMessageList = (ui: React.ReactElement, messages: TMessage[] = []) =>
 
 afterEach(() => {
   vi.restoreAllMocks();
+  autoScrollMock.showScrollButton = false;
+  autoScrollMock.scrollToBottom.mockClear();
+  autoScrollMock.hideScrollButton.mockClear();
   localStorage.clear();
 });
 
@@ -94,6 +116,26 @@ describe('MessageList loading state', () => {
     expect(screen.getByTestId('virtuoso')).toHaveTextContent('cached while refreshing');
     expect(screen.getByTestId('message-list-refreshing')).toHaveTextContent('Refreshing history…');
     expect(screen.getByTestId('message-list-refreshing')).toHaveAttribute('role', 'status');
+  });
+
+  it('uses an accessible button for scrolling back to the latest message', () => {
+    autoScrollMock.showScrollButton = true;
+    renderMessageList(<MessageList />, [
+      {
+        id: 'msg-scroll-1',
+        msg_id: 'msg-scroll-1',
+        conversation_id: 'conv-1',
+        type: 'text',
+        position: 'left',
+        content: { content: 'older visible message' },
+      } as TMessage,
+    ]);
+
+    const button = screen.getByRole('button', { name: 'Scroll to bottom' });
+    fireEvent.click(button);
+
+    expect(autoScrollMock.hideScrollButton).toHaveBeenCalledTimes(1);
+    expect(autoScrollMock.scrollToBottom).toHaveBeenCalledWith('smooth');
   });
 
   it('renders an error state with retry when history loading fails', () => {
