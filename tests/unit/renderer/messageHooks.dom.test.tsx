@@ -45,6 +45,21 @@ const CacheProbe = ({ conversationId }: { conversationId: string }) => {
   );
 };
 
+const CacheRetryProbe = ({ conversationId }: { conversationId: string }) => {
+  const cacheState = useMessageLstCache(conversationId);
+  const messages = useMessageList();
+  return (
+    <>
+      <button type='button' onClick={() => void cacheState.reload().catch(() => {})}>
+        retry-cache
+      </button>
+      <pre data-testid='messages'>{JSON.stringify(messages)}</pre>
+      <pre data-testid='cache-state'>{JSON.stringify(cacheState)}</pre>
+      <div data-testid='cache-error'>{cacheState.error?.message ?? ''}</div>
+    </>
+  );
+};
+
 const createDeferred = <T,>() => {
   let resolve!: (value: T) => void;
   let reject!: (error: unknown) => void;
@@ -143,6 +158,36 @@ describe('message hooks cache merge', () => {
     const merged = JSON.parse(screen.getByTestId('messages').textContent ?? '[]') as TestMessage[];
 
     expect(merged.map((message) => message.id)).toEqual(['db-1', 'stream-1']);
+  });
+
+  it('sets an error state and recovers with retry when history loading fails', async () => {
+    mockGetConversationMessagesInvoke.mockRejectedValueOnce(new Error('history failed')).mockResolvedValueOnce([
+      {
+        id: 'retry-1',
+        msg_id: 'retry-1',
+        conversation_id: 'conv-retry',
+        type: 'text',
+        content: { content: 'loaded after retry' },
+      },
+    ]);
+
+    render(
+      <MessageListProvider value={[]}>
+        <CacheRetryProbe conversationId='conv-retry' />
+      </MessageListProvider>
+    );
+
+    await waitFor(() => {
+      expect(screen.getByTestId('cache-error').textContent).toBe('history failed');
+      expect(screen.getByTestId('cache-state').textContent).toContain('"isLoading":false');
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: 'retry-cache' }));
+
+    await waitFor(() => {
+      expect(screen.getByTestId('messages').textContent).toContain('loaded after retry');
+      expect(screen.getByTestId('cache-error').textContent).toBe('');
+    });
   });
 
   it('reports loading while conversation history is still pending', async () => {
