@@ -25,10 +25,13 @@ const getPayloadBytes = (value: unknown): number | undefined => {
   }
 };
 
+const normalizeMessageOrder = (order: unknown): 'ASC' | 'DESC' => (order === 'DESC' ? 'DESC' : 'ASC');
+
 export function initDatabaseBridge(repo: IConversationRepository): void {
   // Get conversation messages from database
   ipcBridge.database.getConversationMessages.provider(async (_params) => {
-    const { conversation_id, page = 0, pageSize = 10000, order = 'ASC' } = _params ?? {};
+    const { conversation_id, page = 0, pageSize = 10000 } = _params ?? {};
+    const order = normalizeMessageOrder(_params?.order);
     const startedAt = getNow();
     try {
       const repoStartedAt = getNow();

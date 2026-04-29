@@ -135,6 +135,14 @@ describe('databaseBridge', () => {
 
       expect(repo.getMessages).toHaveBeenCalledWith('c1', 2, 50, 'DESC');
     });
+
+    it('falls back to ascending order for invalid order values', async () => {
+      vi.mocked(repo.getMessages).mockReturnValue({ data: [], total: 0, hasMore: false });
+
+      await handlers['getConversationMessages']({ conversation_id: 'c1', order: 'DESC; DROP TABLE messages' });
+
+      expect(repo.getMessages).toHaveBeenCalledWith('c1', 0, 10000, 'ASC');
+    });
   });
 
   // --- getUserConversations ---
