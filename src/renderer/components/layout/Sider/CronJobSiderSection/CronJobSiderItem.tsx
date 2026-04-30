@@ -14,6 +14,7 @@ import { Down } from '@icon-park/react';
 import { Input, Message, Modal } from '@arco-design/web-react';
 import type { ICronJob } from '@/common/adapter/ipcBridge';
 import type { TChatConversation } from '@/common/config/storage';
+import { useBatchSelectionContextSafe } from '../BatchSelectionContext';
 import { ipcBridge } from '@/common';
 import { emitter } from '@/renderer/utils/emitter';
 import { isConversationPinned } from '@renderer/pages/conversation/GroupedHistory/utils/groupingHelpers';
@@ -54,27 +55,10 @@ const CronJobSiderItem: React.FC<CronJobSiderItemProps> = ({
   const { conversations } = useCronJobConversations(job.id);
   const { isConversationGenerating, hasCompletionUnread, clearCompletionUnread } = useConversationHistoryContext();
 
-  // Local batch selection state for cron job conversations
-  const [selectedConversationIds, setSelectedConversationIds] = useState<Set<string>>(new Set());
-
-  // Reset selection when batch mode is turned off
-  useEffect(() => {
-    if (!batchMode) {
-      setSelectedConversationIds(new Set());
-    }
-  }, [batchMode]);
-
-  const toggleSelectedConversation = useCallback((conv: TChatConversation) => {
-    setSelectedConversationIds((prev) => {
-      const next = new Set(prev);
-      if (next.has(conv.id)) {
-        next.delete(conv.id);
-      } else {
-        next.add(conv.id);
-      }
-      return next;
-    });
-  }, []);
+  // Use shared batch selection context (available when wrapped by BatchSelectionProvider in Sider)
+  const batchContext = useBatchSelectionContextSafe();
+  const selectedConversationIds = batchContext?.selectedConversationIds ?? new Set<string>();
+  const toggleSelectedConversation = batchContext?.toggleSelectedConversation ?? (() => {});
 
   // Show all child conversations in both modes; include existingConversationProp as fallback
   const childConversations = useMemo(() => {
