@@ -28,7 +28,10 @@ export class SqliteConversationRepository implements IConversationRepository {
 
   async createConversation(conversation: TChatConversation): Promise<void> {
     const db = await this.getDb();
-    db.createConversation(conversation);
+    const result = db.createConversation(conversation);
+    if (!result.success) {
+      throw new Error(result.error || 'Failed to create conversation');
+    }
   }
 
   async updateConversation(id: string, updates: Partial<TChatConversation>): Promise<void> {
